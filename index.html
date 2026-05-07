@@ -158,7 +158,7 @@
       letter-spacing: 0.02em;
       cursor: default;
       flex-shrink: 0;
-      text-align: left;
+      text-align: center;
       border-radius: 0;
     }
     #btn-generate.ready {
@@ -196,6 +196,7 @@
       display: none;
       gap: 8px;
       margin-top: 12px;
+      padding: 0 16px 20px;
     }
     #preview-actions.visible { display: flex; }
 
@@ -303,26 +304,38 @@
       }
       #gen-panel.open { transform: translateY(0); }
 
-      #btn-generate {
+      #btn-generate,
+      #preview-actions {
         position: fixed;
-        bottom: 16px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
         left: 16px;
         right: 16px;
+        height: 44px;
+        box-sizing: border-box;
         margin: 0;
+        padding: 0;
         z-index: 5;
+      }
+
+      #btn-generate {
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       #preview-actions {
-        position: fixed;
-        bottom: 16px;
-        left: 16px;
-        right: 16px;
-        margin: 0;
-        z-index: 5;
+        align-items: stretch;
+      }
+
+      #btn-add, #btn-discard {
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       #preview-img {
-        max-height: calc(100dvh - 340px);
+        max-height: calc(100dvh - 150px);
         width: auto;
         max-width: 100%;
         margin: 0 auto;
@@ -330,9 +343,9 @@
       }
 
       #preview-canvas {
-        max-height: calc(100dvh - 340px);
-        width: auto;
-        max-width: 100%;
+        width: min(100%, calc((100dvh - 150px) * 2 / 3));
+        height: auto;
+        aspect-ratio: 2 / 3;
         margin: 0 auto;
       }
 
@@ -388,10 +401,10 @@
     <div id="gen-preview">
       <canvas id="preview-canvas"></canvas>
       <img id="preview-img" draggable="false">
-      <div id="preview-actions">
-        <button id="btn-add">Add to doodles</button>
-        <button id="btn-discard">Discard</button>
-      </div>
+    </div>
+    <div id="preview-actions">
+      <button id="btn-add">Add to doodles</button>
+      <button id="btn-discard">Discard</button>
     </div>
   </div>
 
@@ -425,6 +438,7 @@
       'images/Image 7.svg',  'images/Image 8.svg',
       'images/Image 11.svg', 'images/Image 12.svg',
       'images/Image 13.svg', 'images/Image 14.svg',
+      'images/Image 16.svg',
     ];
 
     const scene = document.getElementById('scene');
@@ -506,6 +520,7 @@
       genPanel.classList.add('open');
       headerRight.classList.remove('closed');
       setMobileIcon(true);
+      btnGenerate.classList.toggle('ready', subjectEl.value.trim().length > 0);
     }
     function closePanel() {
       genPanel.classList.remove('open');
@@ -518,10 +533,11 @@
 
     mobileToggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      genPanel.classList.contains('open') ? closePanel() : openPanel();
+      if (genPanel.classList.contains('open')) { if (pendingImage) hidePreview(); closePanel(); }
+      else openPanel();
     });
 
-    genClose.addEventListener('click', (e) => { e.stopPropagation(); closePanel(); });
+    genClose.addEventListener('click', (e) => { e.stopPropagation(); if (pendingImage) hidePreview(); closePanel(); });
 
     document.getElementById('header-center').addEventListener('click', () => {
       aboutOverlay.classList.remove('open');
@@ -546,6 +562,7 @@
     const previewActions = document.getElementById('preview-actions');
     const btnAdd         = document.getElementById('btn-add');
     const btnDiscard     = document.getElementById('btn-discard');
+    const genInputRow    = document.getElementById('gen-input-row');
     const btnGenerate    = document.getElementById('btn-generate');
 
     subjectEl.addEventListener('keydown', (e) => {
@@ -573,6 +590,7 @@
     function startDither() {
       setStatus('');
       btnGenerate.style.display = 'none';
+      if (window.innerWidth <= 768) genInputRow.style.display = 'none';
       const W = 48, H = 72; // small canvas scaled up = chunky squares
       previewCanvas.width  = W;
       previewCanvas.height = H;
@@ -622,6 +640,7 @@
       pendingImage = null;
       btnGenerate.style.display = '';
       btnGenerate.classList.toggle('ready', subjectEl.value.trim().length > 0);
+      if (window.innerWidth <= 768) genInputRow.style.display = '';
     }
 
     btnAdd.addEventListener('click', () => {
