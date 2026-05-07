@@ -24,7 +24,36 @@ const MIME = {
 };
 
 http.createServer((req, res) => {
-  const urlPath  = decodeURIComponent(req.url.split('?')[0]);
+  const urlPath = decodeURIComponent(req.url.split('?')[0]);
+
+  // Return list of saved generated images
+  if (req.method === 'GET' && urlPath === '/api/generated-images') {
+    const imgDir = path.join(ROOT, 'images');
+    fs.readdir(imgDir, (err, files) => {
+      if (err) { res.writeHead(500); res.end('[]'); return; }
+      const generated = files.filter(f => f.startsWith('gen-') && f.endsWith('.png'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(generated.map(f => `images/${f}`)));
+    });
+    return;
+  }
+
+  // Route API calls to the generate handler
+  if (req.method === 'POST' && urlPath === '/api/generate') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      let payload;
+      try { payload = JSON.parse(body); }
+      catch { res.writeHead(400); res.end(JSON.stringify({ message: 'bad json' })); return; }
+      handleGenerate(payload, res).catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: err.message }));
+      });
+    });
+    return;
+  }
+
   const filePath = path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath);
   const ext      = path.extname(filePath);
 
@@ -177,6 +206,10 @@ async function handleGenerate(payload, res) {
       console.log('remove.bg exception:', err.message);
     }
 
+    // Save image to disk for persistence
+    const filename = `gen-${Date.now()}.png`;
+    fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(finalImage, 'base64'), () => {});
+
     res.writeHead(200, { 'Content-Type': 'application/json', ...CORS });
-    res.end(JSON.stringify({ ...reve.body, image: finalImage }));
+    res.end(JSON.stringify({ ...reve.body, image: finalImage, filename }));
 }

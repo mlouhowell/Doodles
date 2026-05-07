@@ -3,13 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>scribbles</title>
+  <title>Doodles</title>
   <link rel="icon" type="image/svg+xml" href="logo/Favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
   <style>
+    @font-face {
+      font-family: 'Lora';
+      src: url('Lora/Lora-VariableFont_wght.ttf') format('truetype');
+      font-weight: 100 900;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Lora';
+      src: url('Lora/Lora-Italic-VariableFont_wght.ttf') format('truetype');
+      font-weight: 100 900;
+      font-style: italic;
+    }
+    @font-face {
+      font-family: 'Space Mono';
+      src: url('Space_Mono/SpaceMono-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Space Mono';
+      src: url('Space_Mono/SpaceMono-Bold.ttf') format('truetype');
+      font-weight: 700;
+      font-style: normal;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #fff; }
 
-    #scene { position: fixed; inset: 0; perspective-origin: 50% 50%; }
+    #scene { position: fixed; top: 0; left: 0; right: 320px; bottom: 0; perspective-origin: 50% 50%; }
     #world { position: absolute; top: 50%; left: 50%; transform-style: preserve-3d; }
 
     .particle {
@@ -29,86 +56,216 @@
       top: 0;
       left: 0;
       right: 0;
-      z-index: 200;
+      z-index: 300;
       height: 56px;
       display: flex;
       align-items: center;
-      padding: 0 20px;
+      justify-content: space-between;
+      padding: 0 0 0 20px;
       border-bottom: 1px solid #000;
       background: #fff;
     }
-    #header img { height: 28px; width: auto; display: block; }
+    #header-about {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font: 14px/1 'IBM Plex Sans', sans-serif;
+      color: #000;
+      padding: 0;
+    }
+    #header-about:hover { opacity: 0.5; }
+    #header-center {
+      position: absolute;
+      left: calc((100% - 320px) / 2);
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #header-center img { height: 28px; width: auto; display: block; }
+    #header-favicon { height: 20px !important; }
+    #header-right {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 320px;
+      padding: 0 16px;
+      border-left: 1px solid #000;
+      height: 100%;
+    }
+    #header span { font: 14px/1 'IBM Plex Sans', sans-serif; }
 
     /* ── gen panel ── */
     #gen-panel {
       position: fixed;
-      top: 0;
+      top: 56px;
       right: 0;
       bottom: 0;
       z-index: 200;
       width: 320px;
       background: #fff;
       border-left: 1px solid #000;
-      transform: translateX(100%);
-      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateY(-100%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       flex-direction: column;
+      overflow-y: auto;
     }
-    #gen-panel.open { transform: translateX(0); }
+    #gen-panel.open { transform: translateY(0); }
 
     /* ── input row ── */
     #gen-input-row {
       display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 16px;
-      height: 56px;
-      border-bottom: 1px solid #000;
+      padding: 20px 16px;
       flex-shrink: 0;
     }
-    #gen-input-row svg { flex-shrink: 0; color: #aaa; }
     #subject {
-      flex: 1;
+      width: 100%;
+      min-width: 0;
+      min-height: 120px;
       border: none;
       outline: none;
-      font: 13px/1 sans-serif;
+      font: 28px/1.35 'Lora', serif;
       color: #000;
       background: transparent;
-      letter-spacing: 0.01em;
+      resize: none;
+      overflow: hidden;
     }
     #subject::placeholder { color: #bbb; }
-    #gen-close { display: none; }
+    #gen-close {
+      position: absolute;
+      right: 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #000;
+      display: flex;
+      align-items: center;
+    }
+    #header-right.closed {
+      background: #000;
+      cursor: pointer;
+    }
+    #header-right.closed span { color: #fff; }
+    #header-right.closed #gen-close { display: none; }
 
     #gen-status {
       padding: 10px 16px;
-      font: 11px/1.4 monospace;
+      font: 11px/1.4 'IBM Plex Sans', sans-serif;
       color: #aaa;
       min-height: 14px;
     }
     #gen-status.err { color: #e05252; }
 
+    /* ── preview ── */
+    #gen-preview {
+      display: none;
+      flex-direction: column;
+      padding: 0 16px 20px;
+      flex-shrink: 0;
+    }
+    #gen-preview.visible { display: flex; }
+
+    #preview-canvas, #preview-img {
+      width: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    #preview-img { display: none; }
+
+    #preview-actions {
+      display: none;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    #preview-actions.visible { display: flex; }
+
+    #btn-add, #btn-discard {
+      flex: 1;
+      padding: 10px 0;
+      border: 1px solid #000;
+      background: #fff;
+      font: 12px/1 'IBM Plex Sans', sans-serif;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+    #btn-add { background: #000; color: #fff; }
+    #btn-add:hover { background: #333; }
+    #btn-discard:hover { background: #f5f5f5; }
+
+    /* ── about overlay ── */
+    #about-overlay {
+      display: none;
+      position: fixed;
+      top: 56px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 250;
+      background: #fff;
+      padding: 40px;
+    }
+    #about-overlay.open { display: block; }
+    #about-content {
+      max-width: 480px;
+      font: 15px/1.6 'IBM Plex Sans', sans-serif;
+    }
+
+    #footer {
+      position: fixed;
+      bottom: 16px;
+      left: 20px;
+      z-index: 100;
+      font: 10px/1 'Space Mono', monospace;
+      color: #000;
+    }
+
   </style>
 </head>
 <body>
-  <div id="header"><img src="logo/Doodles.svg" alt="scribbles"></div>
-
-  <div id="scene">
-    <div id="world"></div>
-  </div>
-
-  <div id="gen-panel" class="open">
-    <div id="gen-input-row">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z"/>
-      </svg>
-      <input type="text" id="subject" placeholder="draw something…" autocomplete="off">
+  <div id="header">
+    <button id="header-about">About</button>
+    <div id="header-center" style="cursor:pointer;">
+      <img src="logo/Favicon.svg" id="header-favicon" alt="">
+      <img src="logo/Doodles.svg" alt="doodles">
+    </div>
+    <div id="header-right">
+      <span>Create your own</span>
       <button id="gen-close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
         </svg>
       </button>
     </div>
+  </div>
+
+  <div id="scene">
+    <div id="world"></div>
+  </div>
+
+  <div id="about-overlay">
+    <div id="about-content">
+      <p>About content goes here.</p>
+    </div>
+  </div>
+
+  <div id="footer"><a href="https://mary-louise.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">By ML Howell</a> · V1.1 · May 2026</div>
+
+  <div id="gen-panel" class="open">
+    <div id="gen-input-row">
+      <textarea id="subject" placeholder="Generate your own doodle, ex: a cute bird" autocomplete="off"></textarea>
+    </div>
     <div id="gen-status"></div>
+    <div id="gen-preview">
+      <canvas id="preview-canvas"></canvas>
+      <img id="preview-img" draggable="false">
+      <div id="preview-actions">
+        <button id="btn-add">Add to doodles</button>
+        <button id="btn-discard">Discard</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -131,7 +288,7 @@
 
     const IMAGES = [
       'images/Image 1.svg',  'images/Image 2.svg',
-      'images/Image 3.svg',  'images/Image 4.svg',
+      'images/Image 3.svg',
       'images/Image 5.svg',  'images/Image 6.svg',
       'images/Image 7.svg',  'images/Image 8.svg',
       'images/Image 11.svg', 'images/Image 12.svg',
@@ -199,20 +356,127 @@
 
 
     // ── panel ────────────────────────────────────────────────────────────────
-    const genPanel  = document.getElementById('gen-panel');
-    const genClose  = document.getElementById('gen-close');
-    const genStatus = document.getElementById('gen-status');
-    const subjectEl = document.getElementById('subject');
+    const genPanel    = document.getElementById('gen-panel');
+    const genClose    = document.getElementById('gen-close');
+    const genStatus   = document.getElementById('gen-status');
+    const subjectEl   = document.getElementById('subject');
+    const headerRight = document.getElementById('header-right');
+    const aboutOverlay = document.getElementById('about-overlay');
 
-    genClose.addEventListener('click', () => genPanel.classList.remove('open'));
+    function openPanel() {
+      aboutOverlay.classList.remove('open');
+      genPanel.classList.add('open');
+      headerRight.classList.remove('closed');
+    }
+    function closePanel() {
+      genPanel.classList.remove('open');
+      headerRight.classList.add('closed');
+    }
 
-    // ── generate ──────────────────────────────────────────────────────────────
-    let generating = false;
+    genClose.addEventListener('click', (e) => { e.stopPropagation(); closePanel(); });
 
-    subjectEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') triggerGenerate();
+    document.getElementById('header-center').addEventListener('click', () => {
+      aboutOverlay.classList.remove('open');
     });
 
+    document.getElementById('header-about').addEventListener('click', () => {
+      closePanel();
+      aboutOverlay.classList.add('open');
+    });
+    headerRight.addEventListener('click', (e) => {
+      if (headerRight.classList.contains('closed')) openPanel();
+    });
+
+    // ── generate ──────────────────────────────────────────────────────────────
+    let generating    = false;
+    let ditherRaf     = null;
+    let pendingImage  = null;
+
+    const previewEl      = document.getElementById('gen-preview');
+    const previewCanvas  = document.getElementById('preview-canvas');
+    const previewImg     = document.getElementById('preview-img');
+    const previewActions = document.getElementById('preview-actions');
+    const btnAdd         = document.getElementById('btn-add');
+    const btnDiscard     = document.getElementById('btn-discard');
+
+    subjectEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); triggerGenerate(); }
+    });
+
+    subjectEl.addEventListener('input', () => {
+      subjectEl.style.height = 'auto';
+      subjectEl.style.height = subjectEl.scrollHeight + 'px';
+    });
+
+    // ── dither animation ──────────────────────────────────────────────────────
+    const BAYER = [
+      [ 0,  8,  2, 10],
+      [12,  4, 14,  6],
+      [ 3, 11,  1,  9],
+      [15,  7, 13,  5],
+    ];
+
+    function startDither() {
+      const W = 48, H = 72; // small canvas scaled up = chunky squares
+      previewCanvas.width  = W;
+      previewCanvas.height = H;
+      previewCanvas.style.display = 'block';
+      previewImg.style.display = 'none';
+      previewActions.classList.remove('visible');
+      previewEl.classList.add('visible');
+
+      const ctx = previewCanvas.getContext('2d');
+      let t = 0;
+      function draw() {
+        const id = ctx.createImageData(W, H);
+        const d  = id.data;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const thresh = BAYER[y % 4][x % 4] / 16;
+            const wave   = (Math.sin((x + y) / (W + H) * Math.PI * 6 - t) + 1) / 2;
+            const v      = wave > thresh ? 255 : 0;
+            const i      = (y * W + x) * 4;
+            d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255;
+          }
+        }
+        ctx.putImageData(id, 0, 0);
+        t += 0.1;
+        ditherRaf = requestAnimationFrame(draw);
+      }
+      draw();
+    }
+
+    function stopDither(imageB64) {
+      cancelAnimationFrame(ditherRaf);
+      ditherRaf = null;
+      pendingImage = `data:image/png;base64,${imageB64}`;
+      previewCanvas.style.display = 'none';
+      previewImg.src = pendingImage;
+      previewImg.style.display = 'block';
+      previewActions.classList.add('visible');
+    }
+
+    function hidePreview() {
+      if (ditherRaf) { cancelAnimationFrame(ditherRaf); ditherRaf = null; }
+      previewEl.classList.remove('visible');
+      previewImg.style.display = 'none';
+      previewCanvas.style.display = 'block';
+      previewActions.classList.remove('visible');
+      pendingImage = null;
+    }
+
+    btnAdd.addEventListener('click', () => {
+      if (pendingImage) { IMAGES.push(pendingImage); buildParticles(); }
+      hidePreview();
+      setStatus('');
+    });
+
+    btnDiscard.addEventListener('click', () => {
+      hidePreview();
+      setStatus('');
+    });
+
+    // ── trigger ───────────────────────────────────────────────────────────────
     async function triggerGenerate() {
       if (generating) return;
       const subject = subjectEl.value.trim();
@@ -220,6 +484,7 @@
 
       generating = true;
       setStatus('generating…');
+      startDither();
 
       try {
         const res = await fetch('/api/generate', {
@@ -231,21 +496,22 @@
         const data = await res.json();
 
         if (!res.ok) {
+          hidePreview();
           setStatus(data.message || `error ${res.status}`, true);
           return;
         }
         if (data.content_violation) {
+          hidePreview();
           setStatus('content policy violation', true);
           return;
         }
 
-        const dataUrl = `data:image/png;base64,${data.image}`;
-        IMAGES.push(dataUrl);
-        buildParticles();
+        stopDither(data.image);
         subjectEl.value = '';
-        setStatus(`added!`);
+        setStatus('');
 
       } catch (err) {
+        hidePreview();
         setStatus('request failed', true);
       } finally {
         generating = false;
@@ -316,8 +582,13 @@
 
     // ── init ─────────────────────────────────────────────────────────────────
     scene.style.perspective = C.perspective + 'px';
-    buildParticles();
     tick();
+    subjectEl.focus();
+
+    fetch('/api/generated-images')
+      .then(r => r.json())
+      .then(saved => { IMAGES.push(...saved); buildParticles(); })
+      .catch(() => buildParticles());
   </script>
 </body>
 </html>
