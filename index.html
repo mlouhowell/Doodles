@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>scribbles</title>
+  <link rel="icon" type="image/svg+xml" href="logo/Favicon.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #fff; }
+
+    #scene { position: fixed; inset: 0; perspective-origin: 50% 50%; }
+    #world { position: absolute; top: 50%; left: 50%; transform-style: preserve-3d; }
+
+    .particle {
+      position: absolute;
+      will-change: transform, opacity;
+      transform-origin: center center;
+      cursor: grab;
+      user-select: none;
+    }
+    .particle img { width: 100%; height: auto; display: block; }
+    body.dragging,
+    body.dragging .particle { cursor: grabbing; }
+
+    /* ── header ── */
+    #header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      border-bottom: 1px solid #000;
+      background: #fff;
+    }
+    #header img { height: 28px; width: auto; display: block; }
+
+    /* ── gen panel ── */
+    #gen-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 200;
+      width: 320px;
+      background: #fff;
+      border-left: 1px solid #000;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    #gen-panel.open { transform: translateX(0); }
+
+    /* ── input row ── */
+    #gen-input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      height: 56px;
+      border-bottom: 1px solid #000;
+      flex-shrink: 0;
+    }
+    #gen-input-row svg { flex-shrink: 0; color: #aaa; }
+    #subject {
+      flex: 1;
+      border: none;
+      outline: none;
+      font: 13px/1 sans-serif;
+      color: #000;
+      background: transparent;
+      letter-spacing: 0.01em;
+    }
+    #subject::placeholder { color: #bbb; }
+    #gen-close { display: none; }
+
+    #gen-status {
+      padding: 10px 16px;
+      font: 11px/1.4 monospace;
+      color: #aaa;
+      min-height: 14px;
+    }
+    #gen-status.err { color: #e05252; }
+
+  </style>
+</head>
+<body>
+  <div id="header"><img src="logo/Doodles.svg" alt="scribbles"></div>
+
+  <div id="scene">
+    <div id="world"></div>
+  </div>
+
+  <div id="gen-panel" class="open">
+    <div id="gen-input-row">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11.5 2.5l2 2-7 7-2.5.5.5-2.5 7-7z"/>
+      </svg>
+      <input type="text" id="subject" placeholder="draw something…" autocomplete="off">
+      <button id="gen-close">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="gen-status"></div>
+  </div>
+
+  <script>
+    // ── config ───────────────────────────────────────────────────────────────
+    const C = {
+      perspective: 790,
+      depth:       2400,
+      speed:       2.5,
+      smoothing:   0.09,
+      cols:        5,
+      rows:        4,
+      spreadX:     1390,
+      spreadY:     770,
+      jitter:      15,
+      imgSize:     235,
+      maxRot:      10,
+      fadeIn:      0.20,
+      fadeOut:     0.08,
+    };
+
+    const IMAGES = [
+      'images/Image 1.svg',  'images/Image 2.svg',
+      'images/Image 3.svg',  'images/Image 4.svg',
+      'images/Image 5.svg',  'images/Image 6.svg',
+      'images/Image 7.svg',  'images/Image 8.svg',
+      'images/Image 11.svg', 'images/Image 12.svg',
+      'images/Image 13.svg', 'images/Image 14.svg',
+    ];
+
+    const scene = document.getElementById('scene');
+    const world = document.getElementById('world');
+
+    let particles  = [];
+    let dragState  = null;
+    let targetZ    = 0;
+    let currentZ   = 0;
+
+    // ── particle system ───────────────────────────────────────────────────────
+    function buildParticles() {
+      world.innerHTML = '';
+      particles = [];
+
+      const COUNT = C.cols * C.rows;
+      const cellW = (C.spreadX * 2) / C.cols;
+      const cellH = (C.spreadY * 2) / C.rows;
+      const shuffled = [...IMAGES].sort(() => Math.random() - 0.5);
+
+      for (let i = 0; i < COUNT; i++) {
+        const el = document.createElement('div');
+        el.className = 'particle';
+        applyParticleSize(el);
+
+        const img = document.createElement('img');
+        img.src = shuffled[i % shuffled.length];
+        img.draggable = false;
+        el.appendChild(img);
+        world.appendChild(el);
+
+        const col = i % C.cols;
+        const row = Math.floor(i / C.cols);
+        const cx  = -C.spreadX + cellW * (col + 0.5);
+        const cy  = -C.spreadY + cellH * (row + 0.5);
+
+        const p = {
+          el,
+          x:     cx + (Math.random() - 0.5) * C.jitter * 2,
+          y:     cy + (Math.random() - 0.5) * C.jitter * 2,
+          phase: i / COUNT,
+          rot:   (Math.random() - 0.5) * C.maxRot * 2,
+        };
+
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dragState = { p, lastX: e.clientX, lastY: e.clientY };
+          document.body.classList.add('dragging');
+        });
+
+        particles.push(p);
+      }
+    }
+
+    function applyParticleSize(el) {
+      el.style.width = C.imgSize + 'px';
+      el.style.left  = -(C.imgSize / 2) + 'px';
+      el.style.top   = -(C.imgSize * 0.664) + 'px';
+    }
+
+
+    // ── panel ────────────────────────────────────────────────────────────────
+    const genPanel  = document.getElementById('gen-panel');
+    const genClose  = document.getElementById('gen-close');
+    const genStatus = document.getElementById('gen-status');
+    const subjectEl = document.getElementById('subject');
+
+    genClose.addEventListener('click', () => genPanel.classList.remove('open'));
+
+    // ── generate ──────────────────────────────────────────────────────────────
+    let generating = false;
+
+    subjectEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') triggerGenerate();
+    });
+
+    async function triggerGenerate() {
+      if (generating) return;
+      const subject = subjectEl.value.trim();
+      if (!subject) { setStatus('enter a subject', true); return; }
+
+      generating = true;
+      setStatus('generating…');
+
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject, aspect_ratio: '2:3', version: 'latest' }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setStatus(data.message || `error ${res.status}`, true);
+          return;
+        }
+        if (data.content_violation) {
+          setStatus('content policy violation', true);
+          return;
+        }
+
+        const dataUrl = `data:image/png;base64,${data.image}`;
+        IMAGES.push(dataUrl);
+        buildParticles();
+        subjectEl.value = '';
+        setStatus(`added!`);
+
+      } catch (err) {
+        setStatus('request failed', true);
+      } finally {
+        generating = false;
+      }
+    }
+
+    function setStatus(msg, isErr = false) {
+      genStatus.textContent = msg;
+      genStatus.className   = isErr ? 'err' : '';
+    }
+
+    // ── drag ─────────────────────────────────────────────────────────────────
+    window.addEventListener('mousemove', (e) => {
+      if (!dragState) return;
+      const { p } = dragState;
+      const dx = e.clientX - dragState.lastX;
+      const dy = e.clientY - dragState.lastY;
+      dragState.lastX = e.clientX;
+      dragState.lastY = e.clientY;
+
+      const raw     = p.phase * C.depth + currentZ;
+      const wrapped = ((raw % C.depth) + C.depth) % C.depth;
+      const z       = wrapped - C.depth;
+      const scale   = C.perspective / (C.perspective - z);
+      p.x += dx / scale;
+      p.y += dy / scale;
+    });
+
+    window.addEventListener('mouseup', () => {
+      dragState = null;
+      document.body.classList.remove('dragging');
+    });
+
+    // ── scroll ───────────────────────────────────────────────────────────────
+    window.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      targetZ += e.deltaY * C.speed;
+    }, { passive: false });
+
+    let lastTouchY = 0;
+    window.addEventListener('touchstart',  (e) => { lastTouchY = e.touches[0].clientY; }, { passive: true });
+    window.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      targetZ   += (lastTouchY - e.touches[0].clientY) * C.speed * 2;
+      lastTouchY = e.touches[0].clientY;
+    }, { passive: false });
+
+    // ── animation loop ────────────────────────────────────────────────────────
+    function tick() {
+      currentZ += (targetZ - currentZ) * C.smoothing;
+
+      for (const p of particles) {
+        const raw     = p.phase * C.depth + currentZ;
+        const wrapped = ((raw % C.depth) + C.depth) % C.depth;
+        const z       = wrapped - C.depth;
+        const t       = (z + C.depth) / C.depth;
+
+        let opacity = 1;
+        if (C.fadeIn  > 0 && t < C.fadeIn)           opacity = t / C.fadeIn;
+        if (C.fadeOut > 0 && t > 1 - C.fadeOut)      opacity = (1 - t) / C.fadeOut;
+
+        p.el.style.transform = `translate3d(${p.x}px,${p.y}px,${z}px) rotate(${p.rot}deg)`;
+        p.el.style.opacity   = opacity;
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    // ── init ─────────────────────────────────────────────────────────────────
+    scene.style.perspective = C.perspective + 'px';
+    buildParticles();
+    tick();
+  </script>
+</body>
+</html>
