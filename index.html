@@ -43,12 +43,9 @@
       position: absolute;
       will-change: transform, opacity;
       transform-origin: center center;
-      cursor: grab;
       user-select: none;
     }
     .particle img { width: 100%; height: auto; display: block; }
-    body.dragging,
-    body.dragging .particle { cursor: grabbing; }
 
     /* ── header ── */
     #header {
@@ -275,12 +272,12 @@
       depth:       2400,
       speed:       2.5,
       smoothing:   0.09,
-      cols:        5,
-      rows:        4,
-      spreadX:     1390,
-      spreadY:     770,
-      jitter:      15,
-      imgSize:     235,
+      cols:        4,
+      rows:        3,
+      spreadX:     1600,
+      spreadY:     900,
+      jitter:      0,
+      imgSize:     220,
       maxRot:      10,
       fadeIn:      0.20,
       fadeOut:     0.08,
@@ -299,7 +296,6 @@
     const world = document.getElementById('world');
 
     let particles  = [];
-    let dragState  = null;
     let targetZ    = 0;
     let currentZ   = 0;
 
@@ -331,18 +327,13 @@
 
         const p = {
           el,
-          x:     cx + (Math.random() - 0.5) * C.jitter * 2,
-          y:     cy + (Math.random() - 0.5) * C.jitter * 2,
-          phase: i / COUNT,
-          rot:   (Math.random() - 0.5) * C.maxRot * 2,
+          img,
+          x:           cx,
+          y:           cy,
+          phase:       i / COUNT,
+          rot:         (Math.random() - 0.5) * C.maxRot * 2,
+          lastWrapped: null,
         };
-
-        el.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dragState = { p, lastX: e.clientX, lastY: e.clientY };
-          document.body.classList.add('dragging');
-        });
 
         particles.push(p);
       }
@@ -523,27 +514,6 @@
       genStatus.className   = isErr ? 'err' : '';
     }
 
-    // ── drag ─────────────────────────────────────────────────────────────────
-    window.addEventListener('mousemove', (e) => {
-      if (!dragState) return;
-      const { p } = dragState;
-      const dx = e.clientX - dragState.lastX;
-      const dy = e.clientY - dragState.lastY;
-      dragState.lastX = e.clientX;
-      dragState.lastY = e.clientY;
-
-      const raw     = p.phase * C.depth + currentZ;
-      const wrapped = ((raw % C.depth) + C.depth) % C.depth;
-      const z       = wrapped - C.depth;
-      const scale   = C.perspective / (C.perspective - z);
-      p.x += dx / scale;
-      p.y += dy / scale;
-    });
-
-    window.addEventListener('mouseup', () => {
-      dragState = null;
-      document.body.classList.remove('dragging');
-    });
 
     // ── scroll ───────────────────────────────────────────────────────────────
     window.addEventListener('wheel', (e) => {
@@ -568,6 +538,13 @@
         const wrapped = ((raw % C.depth) + C.depth) % C.depth;
         const z       = wrapped - C.depth;
         const t       = (z + C.depth) / C.depth;
+
+        // Swap image when particle cycles back (while faded out at far end)
+        if (p.lastWrapped !== null && wrapped < p.lastWrapped - C.depth * 0.5) {
+          p.img.src = IMAGES[Math.floor(Math.random() * IMAGES.length)];
+          p.rot = (Math.random() - 0.5) * C.maxRot * 2;
+        }
+        p.lastWrapped = wrapped;
 
         let opacity = 1;
         if (C.fadeIn  > 0 && t < C.fadeIn)           opacity = t / C.fadeIn;
