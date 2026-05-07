@@ -474,7 +474,15 @@
     }
 
     btnAdd.addEventListener('click', () => {
-      if (pendingImage) { IMAGES.push(pendingImage); buildParticles(); }
+      if (pendingImage) {
+        IMAGES.push(pendingImage);
+        buildParticles();
+        fetch('/api/save-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: pendingImage.split(',')[1] }),
+        });
+      }
       hidePreview();
       setStatus('');
     });

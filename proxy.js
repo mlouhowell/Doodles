@@ -38,6 +38,26 @@ http.createServer((req, res) => {
     return;
   }
 
+  // Save a generated image to disk
+  if (req.method === 'POST' && urlPath === '/api/save-image') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      let payload;
+      try { payload = JSON.parse(body); }
+      catch { res.writeHead(400); res.end('bad json'); return; }
+      const b64 = payload.image;
+      if (!b64) { res.writeHead(400); res.end('image required'); return; }
+      const filename = `gen-${Date.now()}.png`;
+      fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(b64, 'base64'), err => {
+        if (err) { res.writeHead(500); res.end('write failed'); return; }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ filename }));
+      });
+    });
+    return;
+  }
+
   // Route API calls to the generate handler
   if (req.method === 'POST' && urlPath === '/api/generate') {
     let body = '';
@@ -206,10 +226,6 @@ async function handleGenerate(payload, res) {
       console.log('remove.bg exception:', err.message);
     }
 
-    // Save image to disk for persistence
-    const filename = `gen-${Date.now()}.png`;
-    fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(finalImage, 'base64'), () => {});
-
     res.writeHead(200, { 'Content-Type': 'application/json', ...CORS });
-    res.end(JSON.stringify({ ...reve.body, image: finalImage, filename }));
+    res.end(JSON.stringify({ ...reve.body, image: finalImage }));
 }
