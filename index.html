@@ -299,9 +299,20 @@
         border-left: none;
         border-top: none;
         padding-bottom: 80px;
+        transform: translateY(100%);
       }
+      #gen-panel.open { transform: translateY(0); }
 
       #btn-generate {
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        margin: 0;
+        z-index: 5;
+      }
+
+      #preview-actions {
         position: fixed;
         bottom: 16px;
         left: 16px;
@@ -355,7 +366,7 @@
 
   <div id="gen-panel" class="open">
     <div id="gen-input-row">
-      <textarea id="subject" placeholder="Generate your own doodle, ex: a cute bird" autocomplete="off"></textarea>
+      <textarea id="subject" placeholder="Generate your own doodle, ex: a seashell with a heart shaped pearl" autocomplete="off"></textarea>
     </div>
     <button id="btn-generate">Make doodle</button>
     <div id="gen-status"></div>
@@ -610,6 +621,7 @@
       }
       hidePreview();
       setStatus('');
+      if (window.innerWidth <= 768) closePanel();
     });
 
     btnDiscard.addEventListener('click', () => {
