@@ -17,23 +17,6 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
-function httpsPostBinary(hostname, path, headers, body) {
-  return new Promise((resolve, reject) => {
-    const bodyStr = JSON.stringify(body);
-    const req = https.request({
-      hostname, path, method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
-    }, r => {
-      const chunks = [];
-      r.on('data', c => chunks.push(c));
-      r.on('end', () => resolve({ status: r.statusCode, buffer: Buffer.concat(chunks) }));
-    });
-    req.on('error', reject);
-    req.write(bodyStr);
-    req.end();
-  });
-}
-
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).end();
@@ -43,7 +26,6 @@ module.exports = async (req, res) => {
   const { subject, aspect_ratio, version } = req.body;
   const apiKey       = process.env.REVE_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const removebgKey  = process.env.REMOVEBG_API_KEY;
 
   if (!subject) { res.status(400).json({ message: 'subject required' }); return; }
 
@@ -90,22 +72,5 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Strip background with remove.bg
-  let finalImage = reve.body.image;
-  try {
-    const rbg = await httpsPostBinary(
-      'api.remove.bg', '/v1.0/removebg',
-      { 'X-Api-Key': removebgKey },
-      { image_file_b64: reve.body.image, size: 'auto' }
-    );
-    if (rbg.status === 200) {
-      finalImage = rbg.buffer.toString('base64');
-    } else {
-      console.log('remove.bg error:', rbg.buffer.toString('utf8').slice(0, 300));
-    }
-  } catch (err) {
-    console.log('remove.bg exception:', err.message);
-  }
-
-  res.status(200).json({ ...reve.body, image: finalImage });
+  res.status(200).json(reve.body);
 };
