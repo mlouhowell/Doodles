@@ -90,23 +90,5 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // 4. Strip background with remove.bg
-  let finalImage = reve.body.image;
-  try {
-    const rbg = await httpsPostBinary(
-      'api.remove.bg', '/v1.0/removebg',
-      { 'X-Api-Key': removebgKey },
-      { image_file_b64: reve.body.image, size: 'auto' }
-    );
-    console.log('remove.bg status:', rbg.status);
-    if (rbg.status === 200) {
-      finalImage = rbg.buffer.toString('base64');
-    } else {
-      console.log('remove.bg error:', rbg.buffer.toString('utf8').slice(0, 300));
-    }
-  } catch (err) {
-    console.log('remove.bg exception:', err.message);
-  }
-
-  res.status(200).json({ ...reve.body, image: finalImage });
+  res.status(200).json(reve.body);
 };

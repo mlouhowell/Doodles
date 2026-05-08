@@ -667,16 +667,34 @@
       genInputRow.style.display = '';
     }
 
-    btnAdd.addEventListener('click', () => {
-      if (pendingImage) {
-        IMAGES.push(pendingImage);
-        buildParticles();
-        fetch('/api/save-image', {
+    btnAdd.addEventListener('click', async () => {
+      if (!pendingImage) return;
+      btnAdd.disabled = true;
+      setStatus('Saving…');
+      const rawB64 = pendingImage.split(',')[1];
+      let finalB64 = rawB64;
+      try {
+        const rbRes = await fetch('/api/remove-bg', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: pendingImage.split(',')[1] }),
+          body: JSON.stringify({ image: rawB64 }),
         });
+        if (rbRes.ok) {
+          const rbData = await rbRes.json();
+          if (rbData.image) finalB64 = rbData.image;
+        }
+      } catch (e) {
+        console.warn('remove-bg failed, using original', e);
       }
+      const finalImage = `data:image/png;base64,${finalB64}`;
+      IMAGES.push(finalImage);
+      buildParticles();
+      fetch('/api/save-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: finalB64 }),
+      });
+      btnAdd.disabled = false;
       hidePreview();
       setStatus('');
       if (window.innerWidth <= 768) closePanel();
