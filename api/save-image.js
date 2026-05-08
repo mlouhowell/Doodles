@@ -6,7 +6,8 @@ module.exports = async (req, res) => {
   const { image } = req.body;
   if (!image) { res.status(400).json({ message: 'image required' }); return; }
 
-  const filename = `gen-${Date.now()}.png`;
+  const prefix = process.env.VERCEL_ENV === 'production' ? '' : 'staging/';
+  const filename = `${prefix}gen-${Date.now()}.png`;
   const buffer = Buffer.from(image, 'base64');
   const blob = await put(filename, buffer, { access: 'public', contentType: 'image/png' });
 
