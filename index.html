@@ -603,7 +603,7 @@
     });
 
     subjectEl.addEventListener('input', () => {
-      subjectEl.style.height = 'auto';
+      subjectEl.style.height = '0px';
       subjectEl.style.height = subjectEl.scrollHeight + 'px';
       btnGenerate.classList.toggle('ready', subjectEl.value.trim().length > 0);
     });
