@@ -131,8 +131,7 @@
       color: #000;
       background: transparent;
       resize: none;
-      overflow: auto;
-      transform: translateZ(0);
+      overflow: hidden;
     }
     #subject::placeholder { color: #bbb; }
     #gen-close {
@@ -199,11 +198,11 @@
     }
     #gen-preview.visible { display: flex; }
 
-    #dither-mount, #preview-img {
+    #preview-canvas, #preview-img {
       width: 100%;
       display: block;
+      image-rendering: pixelated;
     }
-    #dither-mount { aspect-ratio: 2 / 3; }
     #preview-img { display: none; }
 
     #preview-actions {
@@ -362,7 +361,7 @@
         object-fit: contain;
       }
 
-      #dither-mount {
+      #preview-canvas {
         width: min(100%, calc((100dvh - 150px) * 2 / 3));
         height: auto;
         aspect-ratio: 2 / 3;
@@ -604,7 +603,7 @@
     });
 
     subjectEl.addEventListener('input', () => {
-      subjectEl.style.height = '0px';
+      subjectEl.style.height = 'auto';
       subjectEl.style.height = subjectEl.scrollHeight + 'px';
       btnGenerate.classList.toggle('ready', subjectEl.value.trim().length > 0);
     });
