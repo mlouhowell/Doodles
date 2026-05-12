@@ -6,6 +6,17 @@ const http  = require('http');
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
+const { PNG } = require('pngjs');
+
+function removeWhiteBackground(base64) {
+  const png = PNG.sync.read(Buffer.from(base64, 'base64'));
+  for (let i = 0; i < png.data.length; i += 4) {
+    if (png.data[i] > 220 && png.data[i + 1] > 220 && png.data[i + 2] > 220) {
+      png.data[i + 3] = 0;
+    }
+  }
+  return PNG.sync.write(png).toString('base64');
+}
 
 const STATIC_PORT = 3131;
 const KEYS = JSON.parse(fs.readFileSync(path.join(__dirname, 'keys.json'), 'utf8'));
@@ -58,43 +69,23 @@ http.createServer((req, res) => {
     return;
   }
 
-  // Save a generated image to disk (with background removal via Reve edit)
+  // Save a generated image to disk (with pixel-threshold background removal)
   if (req.method === 'POST' && urlPath === '/api/save-image') {
     let body = '';
     req.on('data', chunk => body += chunk);
-    req.on('end', async () => {
+    req.on('end', () => {
       let payload;
       try { payload = JSON.parse(body); }
       catch { res.writeHead(400); res.end('bad json'); return; }
-      let b64 = payload.image;
+      const b64 = payload.image;
       if (!b64) { res.writeHead(400); res.end('image required'); return; }
 
-      let bgRemoved = false;
-      try {
-        const reve = await httpsPostJson('api.reve.com', '/v1/image/edit',
-          { 'Authorization': `Bearer ${KEYS.reve}`, 'Accept': 'application/json' },
-          {
-            edit_instruction: 'Preserve the line drawing exactly as is. Do not change any lines or shapes.',
-            reference_image: b64,
-            postprocessing: [{ process: 'remove_background' }],
-          }
-        );
-        if (reve.status === 200 && reve.body.image) {
-          b64 = reve.body.image;
-          bgRemoved = true;
-          console.log('bg removal succeeded');
-        } else {
-          console.error('Reve bg removal failed:', reve.status, JSON.stringify(reve.body));
-        }
-      } catch (err) {
-        console.error('Reve bg removal error:', err.message);
-      }
-
+      const processed = removeWhiteBackground(b64);
       const filename = `gen-${Date.now()}.png`;
-      fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(b64, 'base64'), err => {
+      fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(processed, 'base64'), err => {
         if (err) { res.writeHead(500); res.end('write failed'); return; }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ filename, bgRemoved }));
+        res.end(JSON.stringify({ filename }));
       });
     });
     return;
@@ -196,7 +187,7 @@ async function handleGenerate(payload, res) {
     }
 
     // 2. Build the full formula prompt
-    const prompt = `A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on white background. No color, no fill, no shading, no gradients.`;
+    const prompt = `Pure flat white (#FFFFFF) background, no texture, no grain, no grey, no paper texture. A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on pure white background. No color, no fill, no shading, no gradients, no background color.`;
 
     // 3. Send to Reve
     let reve;

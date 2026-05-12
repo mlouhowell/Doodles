@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
   }
 
   // 2. Build prompt
-  const prompt = `A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on white background. No color, no fill, no shading, no gradients.`;
+  const prompt = `Pure flat white (#FFFFFF) background, no texture, no grain, no grey, no paper texture. A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on pure white background. No color, no fill, no shading, no gradients, no background color.`;
 
   // 3. Send to Reve
   let reve;
