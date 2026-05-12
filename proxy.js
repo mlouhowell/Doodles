@@ -6,17 +6,6 @@ const http  = require('http');
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
-const { PNG } = require('pngjs');
-
-function removeWhiteBackground(base64) {
-  const png = PNG.sync.read(Buffer.from(base64, 'base64'));
-  for (let i = 0; i < png.data.length; i += 4) {
-    if (png.data[i] > 220 && png.data[i + 1] > 220 && png.data[i + 2] > 220) {
-      png.data[i + 3] = 0;
-    }
-  }
-  return PNG.sync.write(png).toString('base64');
-}
 
 const STATIC_PORT = 3131;
 const KEYS = JSON.parse(fs.readFileSync(path.join(__dirname, 'keys.json'), 'utf8'));
@@ -69,7 +58,7 @@ http.createServer((req, res) => {
     return;
   }
 
-  // Save a generated image to disk (with pixel-threshold background removal)
+  // Save a generated image to disk
   if (req.method === 'POST' && urlPath === '/api/save-image') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -79,10 +68,8 @@ http.createServer((req, res) => {
       catch { res.writeHead(400); res.end('bad json'); return; }
       const b64 = payload.image;
       if (!b64) { res.writeHead(400); res.end('image required'); return; }
-
-      const processed = removeWhiteBackground(b64);
       const filename = `gen-${Date.now()}.png`;
-      fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(processed, 'base64'), err => {
+      fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(b64, 'base64'), err => {
         if (err) { res.writeHead(500); res.end('write failed'); return; }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ filename }));
