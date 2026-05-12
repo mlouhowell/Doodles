@@ -9,6 +9,26 @@ const path  = require('path');
 
 const STATIC_PORT = 3131;
 const KEYS = JSON.parse(fs.readFileSync(path.join(__dirname, 'keys.json'), 'utf8'));
+
+function httpsPostJson(hostname, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = JSON.stringify(body);
+    const req = https.request({
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
+    }, r => {
+      let data = '';
+      r.on('data', c => data += c);
+      r.on('end', () => {
+        try { resolve({ status: r.statusCode, body: JSON.parse(data) }); }
+        catch (e) { reject(new Error(`JSON parse failed: ${data}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(bodyStr);
+    req.end();
+  });
+}
 const PROXY_PORT  = 3132;
 const ROOT        = __dirname;
 
@@ -38,21 +58,43 @@ http.createServer((req, res) => {
     return;
   }
 
-  // Save a generated image to disk
+  // Save a generated image to disk (with background removal via Reve edit)
   if (req.method === 'POST' && urlPath === '/api/save-image') {
     let body = '';
     req.on('data', chunk => body += chunk);
-    req.on('end', () => {
+    req.on('end', async () => {
       let payload;
       try { payload = JSON.parse(body); }
       catch { res.writeHead(400); res.end('bad json'); return; }
-      const b64 = payload.image;
+      let b64 = payload.image;
       if (!b64) { res.writeHead(400); res.end('image required'); return; }
+
+      let bgRemoved = false;
+      try {
+        const reve = await httpsPostJson('api.reve.com', '/v1/image/edit',
+          { 'Authorization': `Bearer ${KEYS.reve}`, 'Accept': 'application/json' },
+          {
+            edit_instruction: 'Preserve the line drawing exactly as is. Do not change any lines or shapes.',
+            reference_image: b64,
+            postprocessing: [{ process: 'remove_background' }],
+          }
+        );
+        if (reve.status === 200 && reve.body.image) {
+          b64 = reve.body.image;
+          bgRemoved = true;
+          console.log('bg removal succeeded');
+        } else {
+          console.error('Reve bg removal failed:', reve.status, JSON.stringify(reve.body));
+        }
+      } catch (err) {
+        console.error('Reve bg removal error:', err.message);
+      }
+
       const filename = `gen-${Date.now()}.png`;
       fs.writeFile(path.join(ROOT, 'images', filename), Buffer.from(b64, 'base64'), err => {
         if (err) { res.writeHead(500); res.end('write failed'); return; }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ filename }));
+        res.end(JSON.stringify({ filename, bgRemoved }));
       });
     });
     return;
@@ -129,22 +171,7 @@ async function handleGenerate(payload, res) {
       res.end(JSON.stringify(body));
     }
 
-    function httpsPost(hostname, path, headers, body) {
-      return new Promise((resolve, reject) => {
-        const bodyStr = JSON.stringify(body);
-        const req = https.request({
-          hostname, path, method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
-        }, r => {
-          let data = '';
-          r.on('data', c => data += c);
-          r.on('end', () => resolve({ status: r.statusCode, body: JSON.parse(data) }));
-        });
-        req.on('error', reject);
-        req.write(bodyStr);
-        req.end();
-      });
-    }
+    const httpsPost = httpsPostJson;
 
     // 1. Ask Claude to fill in brief subject details
     let details;
