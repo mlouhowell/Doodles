@@ -481,6 +481,17 @@
     let currentZ   = 0;
 
     // ── particle system ───────────────────────────────────────────────────────
+    function seededRot(seed) {
+      const x = Math.sin(seed + 1) * 10000;
+      return (x - Math.floor(x)) * C.maxRot * 2 - C.maxRot;
+    }
+
+    function assignParticleImage(p) {
+      const n = IMAGES.length;
+      p.img.src = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
+      p.rot = seededRot(p.baseImgIdx + p.cycleCount);
+    }
+
     function buildParticles() {
       world.innerHTML = '';
       particles = [];
@@ -495,8 +506,9 @@
         el.className = 'particle';
         applyParticleSize(el);
 
+        const baseImgIdx = IMAGES.indexOf(shuffled[i % shuffled.length]);
         const img = document.createElement('img');
-        img.src = shuffled[i % shuffled.length];
+        img.src = IMAGES[baseImgIdx];
         img.draggable = false;
         el.appendChild(img);
         world.appendChild(el);
@@ -512,8 +524,10 @@
           x:           cx,
           y:           cy,
           phase:       i / COUNT,
-          rot:         (Math.random() - 0.5) * C.maxRot * 2,
+          rot:         seededRot(baseImgIdx),
           lastWrapped: null,
+          baseImgIdx,
+          cycleCount:  0,
         };
 
         particles.push(p);
@@ -799,10 +813,15 @@
         const z       = wrapped - C.depth;
         const t       = (z + C.depth) / C.depth;
 
-        // Swap image when particle cycles back (while faded out at far end)
-        if (p.lastWrapped !== null && wrapped < p.lastWrapped - C.depth * 0.5) {
-          p.img.src = IMAGES[Math.floor(Math.random() * IMAGES.length)];
-          p.rot = (Math.random() - 0.5) * C.maxRot * 2;
+        // Swap image on cycle — deterministic so backward scroll reverses the same sequence
+        if (p.lastWrapped !== null) {
+          if (wrapped < p.lastWrapped - C.depth * 0.5) {
+            p.cycleCount++;
+            assignParticleImage(p);
+          } else if (wrapped > p.lastWrapped + C.depth * 0.5) {
+            p.cycleCount--;
+            assignParticleImage(p);
+          }
         }
         p.lastWrapped = wrapped;
 
