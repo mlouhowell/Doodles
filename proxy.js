@@ -9,6 +9,26 @@ const path  = require('path');
 
 const STATIC_PORT = 3131;
 const KEYS = JSON.parse(fs.readFileSync(path.join(__dirname, 'keys.json'), 'utf8'));
+
+function httpsPostJson(hostname, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = JSON.stringify(body);
+    const req = https.request({
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
+    }, r => {
+      let data = '';
+      r.on('data', c => data += c);
+      r.on('end', () => {
+        try { resolve({ status: r.statusCode, body: JSON.parse(data) }); }
+        catch (e) { reject(new Error(`JSON parse failed: ${data}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(bodyStr);
+    req.end();
+  });
+}
 const PROXY_PORT  = 3132;
 const ROOT        = __dirname;
 
@@ -129,22 +149,7 @@ async function handleGenerate(payload, res) {
       res.end(JSON.stringify(body));
     }
 
-    function httpsPost(hostname, path, headers, body) {
-      return new Promise((resolve, reject) => {
-        const bodyStr = JSON.stringify(body);
-        const req = https.request({
-          hostname, path, method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
-        }, r => {
-          let data = '';
-          r.on('data', c => data += c);
-          r.on('end', () => resolve({ status: r.statusCode, body: JSON.parse(data) }));
-        });
-        req.on('error', reject);
-        req.write(bodyStr);
-        req.end();
-      });
-    }
+    const httpsPost = httpsPostJson;
 
     // 1. Ask Claude to fill in brief subject details
     let details;
@@ -169,7 +174,7 @@ async function handleGenerate(payload, res) {
     }
 
     // 2. Build the full formula prompt
-    const prompt = `A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on white background. No color, no fill, no shading, no gradients.`;
+    const prompt = `Pure flat white (#FFFFFF) background, no texture, no grain, no grey, no paper texture. A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on pure white background. No color, no fill, no shading, no gradients, no background color.`;
 
     // 3. Send to Reve
     let reve;

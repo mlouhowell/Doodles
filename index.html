@@ -382,7 +382,7 @@
       <img src="logo/Doodles.svg" alt="doodles">
     </div>
     <div id="header-right">
-      <span>Create your own</span>
+      <span>Add new doodle</span>
       <button id="gen-close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
@@ -467,6 +467,10 @@
       'images/Image 38.svg', 'images/Image 39.svg',
       'images/Image 40.svg', 'images/Image 41.svg', 'images/Image 42.svg', 'images/Image 43.svg', 'images/Image 44.svg',
       'images/Image 46.svg', 'images/Image 47.svg', 'images/Image 48.svg', 'images/Image 49.svg',
+      'images/Image 50.svg', 'images/Image 51.svg', 'images/Image 52.svg',
+      'images/Image 53.svg', 'images/Image 54.svg', 'images/Image 55.svg', 'images/Image 56.svg', 'images/Image 57.svg',
+      'images/Image 58.svg', 'images/Image 59.svg', 'images/Image 60.svg', 'images/Image 61.svg', 'images/Image 62.svg', 'images/Image 63.svg',
+      'images/Image 64.svg', 'images/Image 65.svg', 'images/Image 66.svg', 'images/Image 67.svg', 'images/Image 68.svg',
     ];
 
     const scene = document.getElementById('scene');
@@ -477,6 +481,17 @@
     let currentZ   = 0;
 
     // ── particle system ───────────────────────────────────────────────────────
+    function seededRot(seed) {
+      const x = Math.sin(seed + 1) * 10000;
+      return (x - Math.floor(x)) * C.maxRot * 2 - C.maxRot;
+    }
+
+    function assignParticleImage(p) {
+      const n = IMAGES.length;
+      p.img.src = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
+      p.rot = seededRot(p.baseImgIdx + p.cycleCount);
+    }
+
     function buildParticles() {
       world.innerHTML = '';
       particles = [];
@@ -491,8 +506,9 @@
         el.className = 'particle';
         applyParticleSize(el);
 
+        const baseImgIdx = IMAGES.indexOf(shuffled[i % shuffled.length]);
         const img = document.createElement('img');
-        img.src = shuffled[i % shuffled.length];
+        img.src = IMAGES[baseImgIdx];
         img.draggable = false;
         el.appendChild(img);
         world.appendChild(el);
@@ -508,8 +524,10 @@
           x:           cx,
           y:           cy,
           phase:       i / COUNT,
-          rot:         (Math.random() - 0.5) * C.maxRot * 2,
+          rot:         seededRot(baseImgIdx),
           lastWrapped: null,
+          baseImgIdx,
+          cycleCount:  0,
         };
 
         particles.push(p);
@@ -541,7 +559,7 @@
       mobileToggle.querySelector('.icon-x').style.display   = open ? 'block' : 'none';
       if (window.innerWidth <= 768) {
         headerEl.classList.toggle('panel-open', open);
-        headerAbout.textContent = open ? 'Create your own' : 'About';
+        headerAbout.textContent = open ? 'Add new doodle' : 'About';
       }
     }
     function openPanel() {
@@ -674,14 +692,37 @@
       genInputRow.style.display = '';
     }
 
-    btnAdd.addEventListener('click', () => {
+    function removeBackground(dataUrl, threshold = 220) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          for (let i = 0; i < d.data.length; i += 4) {
+            if (d.data[i] > threshold && d.data[i+1] > threshold && d.data[i+2] > threshold) {
+              d.data[i+3] = 0;
+            }
+          }
+          ctx.putImageData(d, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.src = dataUrl;
+      });
+    }
+
+    btnAdd.addEventListener('click', async () => {
       if (pendingImage) {
-        IMAGES.push(pendingImage);
+        const processed = await removeBackground(pendingImage);
+        IMAGES.push(processed);
         buildParticles();
         fetch('/api/save-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: pendingImage.split(',')[1] }),
+          body: JSON.stringify({ image: processed.split(',')[1] }),
         });
       }
       hidePreview();
@@ -699,6 +740,12 @@
       if (generating) return;
       const subject = subjectEl.value.trim();
       if (!subject) { setStatus('enter a subject', true); return; }
+
+      const blocked = ['gun', 'guns', 'firearm', 'firearms', 'pistol', 'rifle', 'shotgun'];
+      if (blocked.some(w => new RegExp(`\\b${w}\\b`, 'i').test(subject))) {
+        setStatus('content policy violation', true);
+        return;
+      }
 
       generating = true;
       setStatus('generating…');
@@ -766,10 +813,15 @@
         const z       = wrapped - C.depth;
         const t       = (z + C.depth) / C.depth;
 
-        // Swap image when particle cycles back (while faded out at far end)
-        if (p.lastWrapped !== null && wrapped < p.lastWrapped - C.depth * 0.5) {
-          p.img.src = IMAGES[Math.floor(Math.random() * IMAGES.length)];
-          p.rot = (Math.random() - 0.5) * C.maxRot * 2;
+        // Swap image on cycle — deterministic so backward scroll reverses the same sequence
+        if (p.lastWrapped !== null) {
+          if (wrapped < p.lastWrapped - C.depth * 0.5) {
+            p.cycleCount++;
+            assignParticleImage(p);
+          } else if (wrapped > p.lastWrapped + C.depth * 0.5) {
+            p.cycleCount--;
+            assignParticleImage(p);
+          }
         }
         p.lastWrapped = wrapped;
 
