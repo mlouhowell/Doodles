@@ -726,6 +726,12 @@
       const subject = subjectEl.value.trim();
       if (!subject) { setStatus('enter a subject', true); return; }
 
+      const blocked = ['gun', 'guns', 'firearm', 'firearms', 'pistol', 'rifle', 'shotgun'];
+      if (blocked.some(w => new RegExp(`\\b${w}\\b`, 'i').test(subject))) {
+        setStatus('content policy violation', true);
+        return;
+      }
+
       generating = true;
       setStatus('generating…');
       startDither();
