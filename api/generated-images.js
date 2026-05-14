@@ -5,5 +5,26 @@ module.exports = async (req, res) => {
 
   const prefix = process.env.VERCEL_ENV === 'production' ? 'gen-' : 'staging/gen-';
   const { blobs } = await list({ prefix });
-  res.status(200).json(blobs.map(b => b.url));
+
+  const pngs = blobs.filter(b => b.pathname.endsWith('.png'));
+  const jsonMap = {};
+  blobs.filter(b => b.pathname.endsWith('.json')).forEach(b => {
+    const base = b.pathname.replace(/\.json$/, '').replace(/^staging\//, '');
+    jsonMap[base] = b.url;
+  });
+
+  const results = await Promise.all(pngs.map(async b => {
+    const base = b.pathname.replace(/\.png$/, '').replace(/^staging\//, '');
+    let prompt = null;
+    if (jsonMap[base]) {
+      try {
+        const r = await fetch(jsonMap[base]);
+        const data = await r.json();
+        prompt = data.prompt || null;
+      } catch {}
+    }
+    return { url: b.url, prompt };
+  }));
+
+  res.status(200).json(results);
 };

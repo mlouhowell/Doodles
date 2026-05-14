@@ -46,6 +46,23 @@
       user-select: none;
     }
     .particle img { width: 100%; height: auto; display: block; }
+    .prompt-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.88);
+      opacity: 0;
+      transition: opacity 0.18s ease;
+      font: 13px/1.4 'IBM Plex Sans', sans-serif;
+      color: #000;
+      text-align: center;
+      padding: 10px;
+      pointer-events: none;
+    }
+    .particle:hover .prompt-overlay,
+    .particle.show-prompt .prompt-overlay { opacity: 1; }
 
     /* ── header ── */
     #header {
@@ -476,9 +493,11 @@
     const scene = document.getElementById('scene');
     const world = document.getElementById('world');
 
-    let particles  = [];
-    let targetZ    = 0;
-    let currentZ   = 0;
+    let particles     = [];
+    let targetZ       = 0;
+    let currentZ      = 0;
+    const PROMPTS     = {};
+    let pendingPrompt = '';
 
     // ── particle system ───────────────────────────────────────────────────────
     function seededRot(seed) {
@@ -488,7 +507,9 @@
 
     function assignParticleImage(p) {
       const n = IMAGES.length;
-      p.img.src = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
+      const url = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
+      p.img.src = url;
+      p.overlay.textContent = PROMPTS[url] || '✦';
       p.rot = seededRot(p.baseImgIdx + p.cycleCount);
     }
 
@@ -511,7 +532,23 @@
         img.src = IMAGES[baseImgIdx];
         img.draggable = false;
         el.appendChild(img);
+
+        const overlay = document.createElement('div');
+        overlay.className = 'prompt-overlay';
+        overlay.textContent = PROMPTS[IMAGES[baseImgIdx]] || '✦';
+        el.appendChild(overlay);
+
         world.appendChild(el);
+
+        let lpTimer;
+        el.addEventListener('touchstart', () => {
+          lpTimer = setTimeout(() => el.classList.add('show-prompt'), 500);
+        }, { passive: true });
+        el.addEventListener('touchend', () => {
+          clearTimeout(lpTimer);
+          setTimeout(() => el.classList.remove('show-prompt'), 1500);
+        }, { passive: true });
+        el.addEventListener('touchmove', () => clearTimeout(lpTimer), { passive: true });
 
         const col = i % C.cols;
         const row = Math.floor(i / C.cols);
@@ -521,6 +558,7 @@
         const p = {
           el,
           img,
+          overlay,
           x:           cx,
           y:           cy,
           phase:       i / COUNT,
@@ -717,12 +755,15 @@
     btnAdd.addEventListener('click', async () => {
       if (pendingImage) {
         const processed = await removeBackground(pendingImage);
+        const prompt = pendingPrompt;
+        pendingPrompt = '';
+        PROMPTS[processed] = prompt;
         IMAGES.push(processed);
         buildParticles();
         fetch('/api/save-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: processed.split(',')[1] }),
+          body: JSON.stringify({ image: processed.split(',')[1], prompt }),
         });
       }
       hidePreview();
@@ -771,6 +812,7 @@
           return;
         }
 
+        pendingPrompt = subject;
         stopDither(data.image);
         subjectEl.value = '';
         setStatus('');
@@ -843,7 +885,13 @@
 
     fetch('/api/generated-images')
       .then(r => r.json())
-      .then(saved => { IMAGES.push(...saved); buildParticles(); })
+      .then(saved => {
+        saved.forEach(({ url, prompt }) => {
+          IMAGES.push(url);
+          if (prompt) PROMPTS[url] = prompt;
+        });
+        buildParticles();
+      })
       .catch(() => buildParticles());
   </script>
 </body>
