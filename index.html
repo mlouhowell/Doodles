@@ -620,6 +620,16 @@
     // Start panel closed on mobile
     if (window.innerWidth <= 768) closePanel();
 
+    // Sync panel state when resizing between mobile and desktop
+    let lastMobile = window.innerWidth <= 768;
+    window.addEventListener('resize', () => {
+      const isMobile = window.innerWidth <= 768;
+      if (isMobile === lastMobile) return;
+      lastMobile = isMobile;
+      if (isMobile) closePanel();
+      else openPanel();
+    });
+
     mobileToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       if (genPanel.classList.contains('open')) { if (pendingImage) hidePreview(); closePanel(); }
