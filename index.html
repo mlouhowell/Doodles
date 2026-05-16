@@ -73,8 +73,8 @@
       padding: 10px;
       pointer-events: none;
     }
-    .particle:hover .prompt-overlay,
-    .particle.show-prompt .prompt-overlay { opacity: 1; }
+    .particle:hover .prompt-overlay { opacity: 1; }
+    @media (max-width: 768px) { .prompt-overlay { display: none; } }
 
     /* ── header ── */
     #header {
@@ -551,16 +551,6 @@
         el.appendChild(overlay);
 
         world.appendChild(el);
-
-        let lpTimer;
-        el.addEventListener('touchstart', () => {
-          lpTimer = setTimeout(() => el.classList.add('show-prompt'), 500);
-        }, { passive: true });
-        el.addEventListener('touchend', () => {
-          clearTimeout(lpTimer);
-          setTimeout(() => el.classList.remove('show-prompt'), 1500);
-        }, { passive: true });
-        el.addEventListener('touchmove', () => clearTimeout(lpTimer), { passive: true });
 
         const col = i % C.cols;
         const row = Math.floor(i / C.cols);
