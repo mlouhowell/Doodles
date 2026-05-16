@@ -883,16 +883,17 @@
     tick();
     subjectEl.focus();
 
-    fetch('/api/generated-images')
-      .then(r => r.json())
-      .then(saved => {
-        saved.forEach(({ url, prompt }) => {
-          IMAGES.push(url);
-          if (prompt) PROMPTS[url] = prompt;
-        });
-        buildParticles();
-      })
-      .catch(() => buildParticles());
+    Promise.all([
+      fetch('/prompts.json').then(r => r.json()).catch(() => ({})),
+      fetch('/api/generated-images').then(r => r.json()).catch(() => []),
+    ]).then(([svgPrompts, saved]) => {
+      Object.assign(PROMPTS, svgPrompts);
+      saved.forEach(({ url, prompt }) => {
+        IMAGES.push(url);
+        if (prompt) PROMPTS[url] = prompt;
+      });
+      buildParticles();
+    });
   </script>
 </body>
 </html>
