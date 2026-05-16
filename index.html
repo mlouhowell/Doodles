@@ -885,6 +885,8 @@
 
         p.el.style.transform = `translate3d(${p.x}px,${p.y}px,${z}px) rotate(${p.rot}deg)`;
         p.el.style.opacity   = opacity;
+        const overlayScale = (C.perspective - z) / C.perspective;
+        p.overlay.style.transform = `rotate(${-p.rot}deg) scale(${overlayScale})`;
       }
 
       requestAnimationFrame(tick);
