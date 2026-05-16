@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
     await put(`${prefix}gen-${ts}.json`, JSON.stringify({ prompt }), {
       access: 'public', contentType: 'application/json',
     });
-    if (isProduction) await addToNotion(filename, prompt);
+    if (isProduction) addToNotion(filename, prompt);
   }
 
   res.status(200).json({ url: blob.url, filename });
