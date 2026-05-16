@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // One-time script: pulls Notion labels into blob companion JSON files.
-// Usage: NOTION_API_KEY=... BLOB_READ_WRITE_TOKEN=... node scripts/sync-notion-to-blob.js
+// Usage: node scripts/sync-notion-to-blob.js (reads from .env in project root)
+
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const { put } = require('@vercel/blob');
 
@@ -9,7 +11,7 @@ const notionKey = process.env.NOTION_API_KEY;
 const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 
 if (!notionKey || !blobToken) {
-  console.error('Set NOTION_API_KEY and BLOB_READ_WRITE_TOKEN');
+  console.error('Missing keys — add NOTION_API_KEY and BLOB_READ_WRITE_TOKEN to .env');
   process.exit(1);
 }
 
