@@ -151,7 +151,7 @@ async function handleGenerate(payload, res) {
 
     const httpsPost = httpsPostJson;
 
-    // 1. Ask Claude to fill in brief subject details
+    // 1. Ask Claude to moderate the subject and fill in brief subject details
     let details;
     try {
       const claude = await httpsPost(
@@ -162,7 +162,7 @@ async function handleGenerate(payload, res) {
           max_tokens: 60,
           messages: [{
             role: 'user',
-            content: `For a simple children's line drawing of "${subject}", give me a brief comma-separated list of 3-4 visual characteristics (body shape, defining features, limbs/appendages). Just the list, nothing else. Example for "dog": "a round body, floppy ears, a small snout, and four stubby legs"`,
+            content: `This is for a playful website that turns a word into a simple children's line drawing for a general audience. First decide whether "${subject}" is appropriate to draw — block anything involving weapons, violence, gore, sexual content, hate, or other content unsuitable for children. If it is NOT appropriate, reply with exactly the single word "BLOCKED" and nothing else. If it IS appropriate, reply with a brief comma-separated list of 3-4 visual characteristics (body shape, defining features, limbs/appendages). Just the list, nothing else. Example for "dog": "a round body, floppy ears, a small snout, and four stubby legs"`,
           }],
         }
       );
@@ -170,6 +170,12 @@ async function handleGenerate(payload, res) {
       if (!details) throw new Error('empty response from Claude');
     } catch (err) {
       respond(502, { message: `Claude error: ${err.message}` });
+      return;
+    }
+
+    // 1b. Honor the moderation decision
+    if (/^blocked\b/i.test(details)) {
+      respond(200, { content_violation: true });
       return;
     }
 

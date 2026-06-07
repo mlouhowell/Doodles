@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
 
   if (!subject) { res.status(400).json({ message: 'subject required' }); return; }
 
-  // 1. Ask Claude to expand subject into visual details
+  // 1. Ask Claude to moderate the subject and expand it into visual details
   let details;
   try {
     const claude = await httpsPost(
@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
         max_tokens: 60,
         messages: [{
           role: 'user',
-          content: `For a simple children's line drawing of "${subject}", give me a brief comma-separated list of 3-4 visual characteristics (body shape, defining features, limbs/appendages). Just the list, nothing else. Example for "dog": "a round body, floppy ears, a small snout, and four stubby legs"`,
+          content: `This is for a playful website that turns a word into a simple children's line drawing for a general audience. First decide whether "${subject}" is appropriate to draw — block anything involving weapons, violence, gore, sexual content, hate, or other content unsuitable for children. If it is NOT appropriate, reply with exactly the single word "BLOCKED" and nothing else. If it IS appropriate, reply with a brief comma-separated list of 3-4 visual characteristics (body shape, defining features, limbs/appendages). Just the list, nothing else. Example for "dog": "a round body, floppy ears, a small snout, and four stubby legs"`,
         }],
       }
     );
@@ -48,6 +48,12 @@ module.exports = async (req, res) => {
     if (!details) throw new Error('empty response from Claude');
   } catch (err) {
     res.status(502).json({ message: `Claude error: ${err.message}` });
+    return;
+  }
+
+  // 1b. Honor the moderation decision
+  if (/^blocked\b/i.test(details)) {
+    res.status(200).json({ content_violation: true });
     return;
   }
 
