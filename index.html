@@ -591,6 +591,7 @@
     const genClose    = document.getElementById('gen-close');
     const genStatus   = document.getElementById('gen-status');
     const subjectEl   = document.getElementById('subject');
+    const btnGenerate = document.getElementById('btn-generate');
     const headerRight = document.getElementById('header-right');
     const aboutOverlay = document.getElementById('about-overlay');
     const footerEl = document.getElementById('footer');
@@ -620,6 +621,11 @@
       headerRight.classList.add('closed');
       setMobileIcon(false);
       if (window.innerWidth <= 768) footerEl.style.display = '';
+      // Reset the prompt so reopening starts fresh (clears stale text + errors)
+      subjectEl.value = '';
+      subjectEl.style.height = 'auto';
+      btnGenerate.classList.remove('ready');
+      setStatus('');
     }
 
     // Start panel closed on mobile
@@ -667,7 +673,6 @@
     const btnAdd         = document.getElementById('btn-add');
     const btnDiscard     = document.getElementById('btn-discard');
     const genInputRow    = document.getElementById('gen-input-row');
-    const btnGenerate    = document.getElementById('btn-generate');
 
     subjectEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); triggerGenerate(); }
