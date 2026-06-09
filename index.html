@@ -65,22 +65,7 @@
       cursor: pointer;
       transition: transform 0.18s ease;
     }
-    .particle:hover img { transform: scale(0.88); }
-    .prompt-overlay {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      margin-top: 10px;
-      opacity: 0;
-      transition: opacity 0.18s ease;
-      font: 300 14px/1.3 'IBM Plex Sans', sans-serif;
-      color: #000;
-      text-align: center;
-      pointer-events: none;
-    }
-    .particle:hover .prompt-overlay { opacity: 1; }
-    @media (max-width: 768px) { .prompt-overlay { display: none; } }
+    .particle:hover img { transform: scale(1.1); }
 
     /* ── header ── */
     #header {
@@ -625,7 +610,6 @@
       const n = IMAGES.length;
       const url = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
       p.img.src = url;
-      p.overlay.textContent = PROMPTS[url] || '✦';
       p.rot = seededRot(p.baseImgIdx + p.cycleCount);
       p.currentUrl = url;
     }
@@ -650,11 +634,6 @@
         img.draggable = false;
         el.appendChild(img);
 
-        const overlay = document.createElement('div');
-        overlay.className = 'prompt-overlay';
-        overlay.textContent = PROMPTS[IMAGES[baseImgIdx]] || '✦';
-        el.appendChild(overlay);
-
         world.appendChild(el);
 
         const col = i % C.cols;
@@ -665,7 +644,6 @@
         const p = {
           el,
           img,
-          overlay,
           x:           cx,
           y:           cy,
           phase:       i / COUNT,
@@ -1090,8 +1068,6 @@
 
         p.el.style.transform = `translate3d(${posX}px,${posY}px,${posZ}px) rotate(${p.rot}deg) scale(${pulse})`;
         p.el.style.opacity   = opacity;
-        const overlayScale = (C.perspective - z) / C.perspective;
-        p.overlay.style.transform = `rotate(${-p.rot}deg) scale(${overlayScale})`;
       }
 
       requestAnimationFrame(tick);
