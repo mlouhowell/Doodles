@@ -510,6 +510,16 @@
     const scene = document.getElementById('scene');
     const world = document.getElementById('world');
 
+    // ── ripple (newly added doodle) ───────────────────────────────────────────
+    const RIPPLE_SPEED = 3.5;  // world units per ms — how fast the wave front travels outward
+    const RIPPLE_DUR   = 520;  // ms — how long each neighbour reacts as the wave passes through it
+    const RIPPLE_PUSH  = 45;   // world units — outward nudge at the crest of the wave
+    const DROP_DUR     = 1300; // ms — full entrance of the landed doodle (burst → hold → glide to slot)
+    const DROP_HOLD    = 0.34; // fraction of DROP_DUR it stays large & centered before gliding off
+    const HERO_SCALE   = 1.7;  // how much bigger than normal it lands
+
+    const smoothstep = k => k * k * (3 - 2 * k);
+
     let particles     = [];
     let targetZ       = 0;
     let currentZ      = 0;
@@ -583,6 +593,43 @@
       el.style.width = C.imgSize + 'px';
       el.style.left  = -(C.imgSize / 2) + 'px';
       el.style.top   = -(C.imgSize * 0.664) + 'px';
+    }
+
+    // Drop a freshly generated doodle into the universe: it lands on the most
+    // visible forward particle, then a ripple radiates out through its neighbours.
+    function dropDoodle(src, prompt) {
+      const newIdx = IMAGES.length;
+      IMAGES.push(src);
+      if (prompt) PROMPTS[src] = prompt;
+
+      // The doodle lands dead-centre, then glides to a slot — pick the most
+      // central, currently-visible particle so its home is near the middle too.
+      let target = null, best = Infinity;
+      for (const p of particles) {
+        const raw     = p.phase * C.depth + currentZ;
+        const wrapped = ((raw % C.depth) + C.depth) % C.depth;
+        const t       = wrapped / C.depth;
+        if (t > C.fadeIn && t < 1 - C.fadeOut) {
+          const d = Math.hypot(p.x, p.y);
+          if (d < best) { best = d; target = p; }
+        }
+      }
+      if (!target) target = particles[0];
+
+      // Make this particle the new doodle
+      target.cycleCount = 0;
+      target.baseImgIdx = newIdx;
+      assignParticleImage(target);
+
+      // Wave radiates from screen-centre (where it lands); neighbours react as it reaches them
+      const t0 = performance.now();
+      for (const p of particles) {
+        const d = Math.hypot(p.x, p.y);
+        p.dirx        = d > 0 ? p.x / d : 0;
+        p.diry        = d > 0 ? p.y / d : 0;
+        p.rippleKind  = p === target ? 'drop' : 'ripple';
+        p.rippleStart = t0 + (p === target ? 0 : d / RIPPLE_SPEED);
+      }
     }
 
 
@@ -779,9 +826,7 @@
         const processed = await removeBackground(pendingImage);
         const prompt = pendingPrompt;
         pendingPrompt = '';
-        PROMPTS[processed] = prompt;
-        IMAGES.push(processed);
-        buildParticles();
+        dropDoodle(processed, prompt);
         fetch('/api/save-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -862,7 +907,7 @@
     }, { passive: false });
 
     // ── animation loop ────────────────────────────────────────────────────────
-    function tick() {
+    function tick(now) {
       currentZ += (targetZ - currentZ) * C.smoothing;
 
       for (const p of particles) {
@@ -872,7 +917,8 @@
         const t       = (z + C.depth) / C.depth;
 
         // Swap image on cycle — deterministic so backward scroll reverses the same sequence
-        if (p.lastWrapped !== null) {
+        const dropping = p.rippleKind === 'drop' && p.rippleStart != null;
+        if (p.lastWrapped !== null && !dropping) {
           if (wrapped < p.lastWrapped - C.depth * 0.5) {
             p.cycleCount++;
             assignParticleImage(p);
@@ -887,7 +933,37 @@
         if (C.fadeIn  > 0 && t < C.fadeIn)           opacity = t / C.fadeIn;
         if (C.fadeOut > 0 && t > 1 - C.fadeOut)      opacity = (1 - t) / C.fadeOut;
 
-        p.el.style.transform = `translate3d(${p.x}px,${p.y}px,${z}px) rotate(${p.rot}deg)`;
+        // Entrance: landed doodle bursts in large & centred, then glides to its slot;
+        // its neighbours pulse + nudge outward as the wave front reaches them.
+        let pulse = 1, posX = p.x, posY = p.y, posZ = z;
+        if (p.rippleStart != null && now != null) {
+          const e = now - p.rippleStart;
+          if (p.rippleKind === 'drop') {
+            if (e >= DROP_DUR) {
+              p.rippleStart = null;
+            } else if (e >= 0) {
+              const ph       = e / DROP_DUR;
+              const entrance = ph < 0.16 ? ph / 0.16 : 1;                       // quick fade/scale in
+              const b        = ph < DROP_HOLD ? 0 : smoothstep((ph - DROP_HOLD) / (1 - DROP_HOLD));
+              posX    = p.x * b;        // b: 0 = centre, 1 = home slot
+              posY    = p.y * b;
+              posZ    = z * b;          // b·z → 0 means the front plane (large)
+              pulse   = (HERO_SCALE + (1 - HERO_SCALE) * b) * entrance;
+              opacity = Math.max(opacity, entrance);
+            }
+          } else {
+            if (e >= RIPPLE_DUR) {
+              p.rippleStart = null;
+            } else if (e >= 0) {
+              const bump = Math.sin((e / RIPPLE_DUR) * Math.PI);
+              pulse = 1 + 0.12 * bump;
+              posX  = p.x + p.dirx * RIPPLE_PUSH * bump;
+              posY  = p.y + p.diry * RIPPLE_PUSH * bump;
+            }
+          }
+        }
+
+        p.el.style.transform = `translate3d(${posX}px,${posY}px,${posZ}px) rotate(${p.rot}deg) scale(${pulse})`;
         p.el.style.opacity   = opacity;
         const overlayScale = (C.perspective - z) / C.perspective;
         p.overlay.style.transform = `rotate(${-p.rot}deg) scale(${overlayScale})`;
