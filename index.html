@@ -62,6 +62,7 @@
       width: 100%;
       height: auto;
       display: block;
+      cursor: pointer;
       transition: transform 0.18s ease;
     }
     .particle:hover img { transform: scale(0.88); }
@@ -305,6 +306,72 @@
       color: #000;
     }
 
+    /* ── doodle modal ── */
+    #doodle-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 400;
+      background: rgba(0, 0, 0, 0.18);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #doodle-modal.open { display: flex; }
+    #doodle-card {
+      position: relative;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+      width: min(460px, 92vw);
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      padding: 48px;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    #doodle-media {
+      width: 240px;
+      height: 280px;
+      max-width: 72%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #doodle-media img {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+      object-fit: contain;
+    }
+    #doodle-info {
+      width: 100%;
+      text-align: center;
+    }
+    #doodle-prompt {
+      font: 24px/1.4 'Lora', serif;
+      color: #000;
+    }
+    #doodle-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #000;
+      display: flex;
+      align-items: center;
+      line-height: 0;
+    }
+    #doodle-close:hover { opacity: 0.5; }
+
     /* ── mobile ── */
     #mobile-toggle { display: none; }
 
@@ -404,6 +471,14 @@
 
       #about-content { font-size: 28px; }
       #about-overlay { padding: 24px; }
+
+      #doodle-card {
+        gap: 24px;
+        padding: 32px;
+        width: 92vw;
+      }
+      #doodle-media { width: 200px; height: 240px; max-width: 60%; }
+      #doodle-prompt { font-size: 22px; }
     }
 
   </style>
@@ -444,6 +519,20 @@
   </div>
 
   <div id="footer"><a href="https://mary-louise.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">By ML Howell</a> · V1.1 · May 2026</div>
+
+  <div id="doodle-modal">
+    <div id="doodle-card">
+      <button id="doodle-close" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
+        </svg>
+      </button>
+      <div id="doodle-media"><img id="doodle-media-img" draggable="false"></div>
+      <div id="doodle-info">
+        <div id="doodle-prompt"></div>
+      </div>
+    </div>
+  </div>
 
   <div id="gen-panel" class="open">
     <div id="gen-scroll">
@@ -538,6 +627,7 @@
       p.img.src = url;
       p.overlay.textContent = PROMPTS[url] || '✦';
       p.rot = seededRot(p.baseImgIdx + p.cycleCount);
+      p.currentUrl = url;
     }
 
     function buildParticles() {
@@ -583,6 +673,7 @@
           lastWrapped: null,
           baseImgIdx,
           cycleCount:  0,
+          currentUrl:  IMAGES[baseImgIdx],
         };
 
         particles.push(p);
@@ -706,6 +797,38 @@
     });
     headerRight.addEventListener('click', (e) => {
       if (window.innerWidth > 768 && headerRight.classList.contains('closed')) openPanel();
+    });
+
+    // ── doodle modal ───────────────────────────────────────────────────────────
+    const doodleModal    = document.getElementById('doodle-modal');
+    const doodleMediaImg = document.getElementById('doodle-media-img');
+    const doodlePrompt   = document.getElementById('doodle-prompt');
+
+    function openDoodleModal(p) {
+      if (!p) return;
+      doodleMediaImg.src = p.currentUrl || p.img.src;
+      const pr = PROMPTS[p.currentUrl];
+      doodlePrompt.textContent = (pr && pr !== '✦') ? pr : 'No prompt recorded';
+      // Slide the side panel closed so the modal sits centred on the full page;
+      // it stays closed until the user clicks "Add new doodle".
+      if (genPanel.classList.contains('open')) closePanel();
+      doodleModal.classList.add('open');
+    }
+    function closeDoodleModal() {
+      doodleModal.classList.remove('open');
+    }
+
+    world.addEventListener('click', (e) => {
+      const el = e.target.closest('.particle');
+      if (!el) return;
+      openDoodleModal(particles.find(p => p.el === el));
+    });
+    doodleModal.addEventListener('click', (e) => {
+      if (e.target === doodleModal) closeDoodleModal(); // click outside the card
+    });
+    document.getElementById('doodle-close').addEventListener('click', closeDoodleModal);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDoodleModal();
     });
 
     // ── generate ──────────────────────────────────────────────────────────────
@@ -894,6 +1017,7 @@
 
     // ── scroll ───────────────────────────────────────────────────────────────
     window.addEventListener('wheel', (e) => {
+      if (doodleModal.classList.contains('open')) return;
       e.preventDefault();
       targetZ += e.deltaY * C.speed;
     }, { passive: false });
@@ -901,6 +1025,7 @@
     let lastTouchY = 0;
     window.addEventListener('touchstart',  (e) => { lastTouchY = e.touches[0].clientY; }, { passive: true });
     window.addEventListener('touchmove', (e) => {
+      if (doodleModal.classList.contains('open')) return;
       e.preventDefault();
       targetZ   += (lastTouchY - e.touches[0].clientY) * C.speed * 2;
       lastTouchY = e.touches[0].clientY;
