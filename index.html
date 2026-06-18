@@ -57,13 +57,29 @@
       transform-origin: center center;
       user-select: none;
       overflow: visible;
+      touch-action: none;
     }
     .particle img {
       width: 100%;
       height: auto;
       display: block;
-      cursor: pointer;
+      cursor: grab;
       transition: transform 0.18s ease;
+    }
+    /* Lifted while being dragged — sits above everything, shows a soft shadow. */
+    .particle.dragging { z-index: 600; }
+    .particle.dragging img {
+      cursor: grabbing;
+      filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.18));
+    }
+    /* Crossfade layer — sits exactly over the main image so a wrap-swap can
+       cross-dissolve instead of hard-cutting. */
+    .particle img.overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      opacity: 0;
+      pointer-events: none;
     }
     .particle:hover img { transform: scale(1.1); }
 
@@ -551,7 +567,8 @@
       jitter:      0,
       imgSize:     220,
       maxRot:      10,
-      fadeIn:      0.20,
+      deadZone:    0.20,
+      fadeIn:      0.16,
       fadeOut:     0.08,
     };
 
@@ -591,6 +608,7 @@
     const DROP_DUR     = 1300; // ms — full entrance of the landed doodle (burst → hold → glide to slot)
     const DROP_HOLD    = 0.34; // fraction of DROP_DUR it stays large & centered before gliding off
     const HERO_SCALE   = 1.7;  // how much bigger than normal it lands
+    const CROSSFADE_MS = 220;  // ms — image swaps cross-dissolve instead of hard-cutting
 
     const smoothstep = k => k * k * (3 - 2 * k);
 
@@ -599,6 +617,8 @@
     let currentZ      = 0;
     const PROMPTS     = {};
     let pendingPrompt = '';
+    let suppressClick = false;  // set true after a drag so the trailing click doesn't open the modal
+    let dragCand      = null;   // in-flight drag candidate, see "drag to reposition"
 
     // ── particle system ───────────────────────────────────────────────────────
     function seededRot(seed) {
@@ -609,9 +629,23 @@
     function assignParticleImage(p) {
       const n = IMAGES.length;
       const url = IMAGES[((p.baseImgIdx + p.cycleCount) % n + n) % n];
-      p.img.src = url;
       p.rot = seededRot(p.baseImgIdx + p.cycleCount);
+      startCrossfade(p, url);
       p.currentUrl = url;
+    }
+
+    // Swap a particle's image as a short time-based cross-dissolve. A hard src
+    // swap is only invisible when it lands exactly at the fade boundary; fast
+    // (especially forward) mobile scrolling overshoots that narrow band, so the
+    // swap pops at a visible opacity. A dissolve hides it wherever it lands.
+    function startCrossfade(p, url) {
+      if (url === p.currentUrl && p.swapStart == null) return;
+      // A crossfade is already in flight — snap it to its target before the next.
+      if (p.swapStart != null) { p.img.src = p.swapUrl; p.img.style.opacity = 1; }
+      p.swapUrl = url;
+      p.overlay.src = url;
+      p.overlay.style.opacity = 0;
+      p.swapStart = performance.now();
     }
 
     function buildParticles() {
@@ -634,6 +668,11 @@
         img.draggable = false;
         el.appendChild(img);
 
+        const overlay = document.createElement('img');
+        overlay.className = 'overlay';
+        overlay.draggable = false;
+        el.appendChild(overlay);
+
         world.appendChild(el);
 
         const col = i % C.cols;
@@ -644,6 +683,7 @@
         const p = {
           el,
           img,
+          overlay,
           x:           cx,
           y:           cy,
           phase:       i / COUNT,
@@ -797,6 +837,7 @@
     }
 
     world.addEventListener('click', (e) => {
+      if (suppressClick) { suppressClick = false; return; }
       const el = e.target.closest('.particle');
       if (!el) return;
       openDoodleModal(particles.find(p => p.el === el));
@@ -808,6 +849,78 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeDoodleModal();
     });
+
+    // ── drag to reposition ─────────────────────────────────────────────────────
+    // Pick a doodle up and move it to a new spot. The slot keeps floating through
+    // depth and cycling images on scroll — only its home X/Y changes, and only for
+    // this session (positions reset on reload). On touch, a short long-press lifts
+    // the doodle so an ordinary swipe still scrolls the universe.
+    const LIFT_MS     = 280;  // ms to hold before a touch lifts a doodle
+    const DRAG_THRESH = 4;    // px of movement that counts as a real drag
+    let liftTimer = null;
+
+    function liftDoodle(c) {
+      c.active = true;
+      c.p.el.classList.add('dragging');
+      document.body.style.cursor = 'grabbing';
+    }
+    function settleDoodle(c) {
+      c.p.el.classList.remove('dragging');
+      document.body.style.cursor = '';
+    }
+
+    scene.addEventListener('pointerdown', (e) => {
+      suppressClick = false;
+      if (doodleModal.classList.contains('open')) return;
+      const el = e.target.closest('.particle');
+      if (!el) return;
+      const p = particles.find(pp => pp.el === el);
+      if (!p) return;
+      dragCand = {
+        p, pointerId: e.pointerId, touch: e.pointerType === 'touch', active: false,
+        startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY,
+      };
+      if (dragCand.touch) {
+        liftTimer = setTimeout(() => { liftTimer = null; if (dragCand) liftDoodle(dragCand); }, LIFT_MS);
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      const c = dragCand;
+      if (!c || e.pointerId !== c.pointerId) return;
+      const moved = Math.hypot(e.clientX - c.startX, e.clientY - c.startY);
+
+      if (!c.active) {
+        if (c.touch) {
+          // Moving before the long-press fires means the user is scrolling, not
+          // dragging — abandon the candidate and let the swipe pan the universe.
+          if (moved > DRAG_THRESH) { clearTimeout(liftTimer); liftTimer = null; dragCand = null; }
+          return;
+        }
+        if (moved > DRAG_THRESH) liftDoodle(c); else return;  // mouse/pen: lift on threshold
+      }
+
+      // Convert the screen delta to world units: a doodle deep in the scene is
+      // foreshortened by perspective, so it must move more in world space to keep
+      // up with the cursor. projScale is its current on-screen shrink factor.
+      const dx = e.clientX - c.lastX, dy = e.clientY - c.lastY;
+      const scale = c.p.projScale || 1;
+      c.p.x += dx / scale;
+      c.p.y += dy / scale;
+      c.lastX = e.clientX; c.lastY = e.clientY;
+      e.preventDefault();
+    });
+
+    function endDrag(e) {
+      if (liftTimer) { clearTimeout(liftTimer); liftTimer = null; }
+      const c = dragCand;
+      if (!c) return;
+      if (e && e.pointerId !== c.pointerId) return;
+      if (c.active) { suppressClick = true; settleDoodle(c); }  // swallow the trailing click
+      dragCand = null;
+    }
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
 
     // ── generate ──────────────────────────────────────────────────────────────
     let generating    = false;
@@ -1004,6 +1117,7 @@
     window.addEventListener('touchstart',  (e) => { lastTouchY = e.touches[0].clientY; }, { passive: true });
     window.addEventListener('touchmove', (e) => {
       if (doodleModal.classList.contains('open')) return;
+      if (dragCand && dragCand.active) { e.preventDefault(); return; }  // dragging a doodle, don't scroll
       e.preventDefault();
       targetZ   += (lastTouchY - e.touches[0].clientY) * C.speed * 2;
       lastTouchY = e.touches[0].clientY;
@@ -1032,9 +1146,29 @@
         }
         p.lastWrapped = wrapped;
 
+        // Advance any in-flight image cross-dissolve (time-based, so it stays
+        // smooth no matter how fast the swap's wrap happened to fly past).
+        if (p.swapStart != null && now != null) {
+          const k = (now - p.swapStart) / CROSSFADE_MS;
+          if (k >= 1) {
+            p.img.src = p.swapUrl;
+            p.img.style.opacity = 1;
+            p.overlay.style.opacity = 0;
+            p.swapStart = null;
+          } else {
+            p.img.style.opacity = 1 - k;
+            p.overlay.style.opacity = k;
+          }
+        }
+
+        // Doodles stay fully transparent for a "dead zone" right after they wrap
+        // in at the far plane, then fade in. The image swap fires inside that
+        // zero-opacity band, so even a fast forward flick that overshoots the
+        // wrap lands while the doodle is still invisible — the swap can't show.
         let opacity = 1;
-        if (C.fadeIn  > 0 && t < C.fadeIn)           opacity = t / C.fadeIn;
-        if (C.fadeOut > 0 && t > 1 - C.fadeOut)      opacity = (1 - t) / C.fadeOut;
+        if (t < C.deadZone)                                 opacity = 0;
+        else if (C.fadeIn > 0 && t < C.deadZone + C.fadeIn) opacity = (t - C.deadZone) / C.fadeIn;
+        if (C.fadeOut > 0 && t > 1 - C.fadeOut)             opacity = Math.min(opacity, (1 - t) / C.fadeOut);
 
         // Entrance: landed doodle bursts in large & centred, then glides to its slot;
         // its neighbours pulse + nudge outward as the wave front reaches them.
@@ -1065,6 +1199,9 @@
             }
           }
         }
+
+        // On-screen shrink from perspective at this depth — used by drag-to-reposition.
+        p.projScale = C.perspective / (C.perspective - posZ);
 
         p.el.style.transform = `translate3d(${posX}px,${posY}px,${posZ}px) rotate(${p.rot}deg) scale(${pulse})`;
         p.el.style.opacity   = opacity;
