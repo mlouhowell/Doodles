@@ -58,18 +58,20 @@
       user-select: none;
       overflow: visible;
       touch-action: none;
+      cursor: grab;
     }
     .particle img {
       width: 100%;
       height: auto;
       display: block;
-      cursor: grab;
+      /* Hit-testing stays on the stable .particle box. If the pointer could land
+         on the img it would flicker as the hover scale grows past the edge. */
+      pointer-events: none;
       transition: transform 0.18s ease;
     }
     /* Lifted while being dragged — sits above everything, shows a soft shadow. */
-    .particle.dragging { z-index: 600; }
+    .particle.dragging { z-index: 600; cursor: grabbing; }
     .particle.dragging img {
-      cursor: grabbing;
       filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.18));
     }
     /* Crossfade layer — sits exactly over the main image so a wrap-swap can
@@ -856,7 +858,8 @@
     // this session (positions reset on reload). On touch, a short long-press lifts
     // the doodle so an ordinary swipe still scrolls the universe.
     const LIFT_MS     = 280;  // ms to hold before a touch lifts a doodle
-    const DRAG_THRESH = 4;    // px of movement that counts as a real drag
+    const DRAG_THRESH = 8;    // px of movement that counts as a real drag (above
+                              // normal click jitter, so a click still opens the modal)
     let liftTimer = null;
 
     function liftDoodle(c) {
