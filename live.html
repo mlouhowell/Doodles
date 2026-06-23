@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doodles — Live</title>
+  <link rel="icon" type="image/svg+xml" href="logo/Favicon.svg">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      src: url('IBM_Plex_Sans/IBMPlexSans-VariableFont_wdth,wght.ttf') format('truetype');
+      font-weight: 100 900; font-style: normal;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden; background: #fff;
+      font-family: 'IBM Plex Sans', sans-serif; color: #111;
+    }
+    #stage { position: fixed; inset: 0; }
+
+    /* Small ambient header — unobtrusive, just orients the room */
+    #hud {
+      position: fixed; top: 18px; left: 22px; z-index: 1000;
+      font-size: 13px; letter-spacing: 0.02em; color: #999;
+      display: flex; align-items: center; gap: 8px; user-select: none;
+    }
+    #hud .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #19c37d;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* Empty state, shown until the first doodle lands */
+    #waiting {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      color: #bbb; font-size: 18px; pointer-events: none; transition: opacity .6s ease;
+    }
+    #waiting .sub { font-size: 14px; color: #ccc; }
+
+    .doodle {
+      position: absolute; will-change: transform, opacity;
+      transform-origin: center center;
+      transform: rotate(var(--rot, 0deg));
+    }
+    .doodle img { width: 100%; height: auto; display: block; pointer-events: none; user-select: none; }
+
+    /* Faint background field of doodles already on the site */
+    .doodle.ambient { opacity: 0.12; filter: grayscale(0.2); }
+
+    /* A doodle someone just added — pops in bold, then sits still */
+    .doodle.fresh { animation: pop .9s cubic-bezier(.2,1.3,.4,1) forwards; z-index: 10; }
+    .doodle.fresh .label {
+      position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+      white-space: nowrap; font-size: 13px; color: #444; background: rgba(255,255,255,.85);
+      padding: 3px 9px; border-radius: 12px; opacity: 0; animation: labelIn .5s ease .5s forwards;
+      max-width: 280px; overflow: hidden; text-overflow: ellipsis;
+    }
+    @keyframes pop {
+      0%   { transform: scale(0) rotate(var(--rot,0deg)); opacity: 0; }
+      60%  { opacity: 1; }
+      100% { transform: scale(1) rotate(var(--rot,0deg)); opacity: 1; }
+    }
+    @keyframes labelIn { to { opacity: 1; } }
+    .doodle.leaving { transition: opacity 1s ease; opacity: 0 !important; }
+
+    /* Scan-to-add card, bottom-right — big enough to read from across a room */
+    #qr {
+      position: fixed; right: 26px; bottom: 26px; z-index: 1000;
+      background: #fff; border: 1px solid #eee; border-radius: 16px;
+      padding: 18px 18px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.08);
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+    }
+    #qr canvas, #qr img { display: block; border-radius: 6px; }
+    #qr .cap { font-size: 14px; font-weight: 500; color: #222; }
+    #qr .url { font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div id="waiting">
+    <div>waiting for doodles…</div>
+    <div class="sub">add one at doodle.mary-louise.com and watch it appear here</div>
+  </div>
+  <div id="stage"></div>
+
+  <div id="qr">
+    <div id="qrcode"></div>
+    <div class="cap">Scan to add your doodle</div>
+    <div class="url">doodle.mary-louise.com</div>
+  </div>
+
+  <script src="vendor/qrcode.min.js"></script>
+  <script>
+    // Render the QR pointing at the live site so people can scan and add doodles.
+    new QRCode(document.getElementById('qrcode'), {
+      text: 'https://doodle.mary-louise.com',
+      width: 150, height: 150,
+      colorDark: '#111111', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  </script>
+
+  <script>
+    const stage = document.getElementById('stage');
+    const waiting = document.getElementById('waiting');
+
+    const seen = new Set();        // dedup by blob url
+    const live = [];               // DOM nodes currently shown (for capping)
+    const MAX_ON_SCREEN = 55;
+    const POLL_MS = 3000;
+    let firstLoad = true;
+    let ambientCleared = false;
+
+    const tsOf = (url) => { const m = url.match(/gen-(\d+)/); return m ? +m[1] : 0; };
+
+    // Doodles are ~2:3 (taller than wide); approximate height for collision tests.
+    const rectOf = (n) => {
+      const w = parseFloat(n.style.width) || 180;
+      return { x: parseFloat(n.style.left) || 0, y: parseFloat(n.style.top) || 0, w, h: w * 1.5 };
+    };
+    const overlaps = (a, b, pad) =>
+      !(a.x + a.w + pad < b.x || b.x + b.w + pad < a.x ||
+        a.y + a.h + pad < b.y || b.y + b.h + pad < a.y);
+
+    // Keep the QR card (bottom-right) clear of doodles.
+    const reservedRect = () => ({
+      x: window.innerWidth - 250, y: window.innerHeight - 280, w: 250, h: 280,
+    });
+
+    // Place a doodle at a random spot, trying not to collide with ones already shown.
+    function place(node, big) {
+      const size = big ? (150 + Math.random() * 70) : (90 + Math.random() * 70);
+      const h = size * 1.5;
+      const mx = size * 0.4, my = h * 0.3;
+      const maxX = Math.max(mx, window.innerWidth - size - mx);
+      const maxY = Math.max(my, window.innerHeight - h - my);
+
+      // Avoid existing *fresh* doodles (and always the QR card).
+      const avoid = live
+        .filter(n => n.classList.contains('fresh') && !n.classList.contains('leaving') && n.style.width)
+        .map(rectOf);
+      avoid.push(reservedRect());
+
+      let x = mx, y = my;
+      for (let i = 0; i < 60; i++) {
+        const tx = mx + Math.random() * (maxX - mx);
+        const ty = my + Math.random() * (maxY - my);
+        x = tx; y = ty;
+        const cand = { x: tx, y: ty, w: size, h };
+        if (!avoid.some(r => overlaps(cand, r, 14))) break; // found a clear spot
+      }
+      node.style.width = size + 'px';
+      node.style.left = x + 'px';
+      node.style.top = y + 'px';
+      node.style.setProperty('--rot', (Math.random() * 16 - 8).toFixed(1) + 'deg');
+    }
+
+    // Fade out and remove the grey backdrop once real doodles start arriving.
+    function clearAmbient() {
+      for (let i = live.length - 1; i >= 0; i--) {
+        if (live[i].classList.contains('ambient')) {
+          const n = live[i];
+          n.classList.add('leaving');
+          setTimeout(() => n.remove(), 1100);
+          live.splice(i, 1);
+        }
+      }
+    }
+
+    function addDoodle(item, fresh) {
+      const node = document.createElement('div');
+      node.className = 'doodle ' + (fresh ? 'fresh' : 'ambient');
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.alt = item.prompt || 'doodle';
+      node.appendChild(img);
+      if (fresh && item.prompt) {
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = item.prompt;
+        node.appendChild(label);
+      }
+      place(node, fresh);
+      stage.appendChild(node);
+      live.push(node);
+
+      // Cap the field so it never gets too crowded — retire the oldest.
+      while (live.length > MAX_ON_SCREEN) {
+        const old = live.shift();
+        old.classList.add('leaving');
+        setTimeout(() => old.remove(), 1100);
+      }
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/generated-images', { cache: 'no-store' });
+        if (!res.ok) return;
+        let data = await res.json();
+        if (!Array.isArray(data)) return;
+        // Production returns {url, prompt}; local proxy returns plain url strings.
+        data = data.map(d => typeof d === 'string' ? { url: d, prompt: null } : d)
+                   .filter(d => d && d.url);
+        data.sort((a, b) => tsOf(a.url) - tsOf(b.url)); // oldest → newest
+
+        const incoming = data.filter(d => d.url && !seen.has(d.url));
+        incoming.forEach(d => seen.add(d.url));
+
+        if (firstLoad) {
+          // Start blank — mark everything that already exists as seen so it never
+          // pops. Only doodles added after the page loads get the spotlight.
+          firstLoad = false;
+        } else if (incoming.length) {
+          waiting.style.opacity = '0';
+          incoming.forEach(d => addDoodle(d, true)); // the live moment
+        }
+      } catch (e) { /* keep the demo alive no matter what */ }
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>
