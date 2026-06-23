@@ -175,12 +175,6 @@
       img.src = item.url;
       img.alt = item.prompt || 'doodle';
       node.appendChild(img);
-      if (fresh && item.prompt) {
-        const label = document.createElement('div');
-        label.className = 'label';
-        label.textContent = item.prompt;
-        node.appendChild(label);
-      }
       place(node, fresh);
       stage.appendChild(node);
       live.push(node);
