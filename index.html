@@ -225,13 +225,16 @@
       color: #aaa;
       min-height: 14px;
     }
+    /* Empty during generation — collapse it so the dither runs flush
+       to the panel top instead of under a blank 34px box. */
+    #gen-status:empty { display: none; }
     #gen-status.err { color: #e05252; }
 
     /* ── preview ── */
     #gen-preview {
       display: none;
       flex-direction: column;
-      padding: 0 16px 20px;
+      padding: 0 0 20px;
       flex-shrink: 0;
     }
     #gen-preview.visible { display: flex; }
