@@ -1,5 +1,16 @@
 const https = require('https');
 
+// Krea 2 Medium + the doodles LoRA. Style id comes from /styles on the Krea API.
+const KREA_BASE       = 'https://api.krea.ai';
+const KREA_MODEL_PATH = '/generate/image/krea/krea-2/medium';
+const STYLE_ID        = 'pgozm164j';
+const STYLE_STRENGTH  = 0.8;
+
+// Krea is a job queue, not a synchronous call — create, then poll until it lands.
+const POLL_INTERVAL_MS = 1500;
+const POLL_TIMEOUT_MS  = 55000;
+const PENDING = ['backlogged', 'queued', 'scheduled', 'processing', 'sampling', 'intermediate-complete'];
+
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const bodyStr = JSON.stringify(body);
@@ -17,14 +28,70 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Create a generation job, wait for it, and hand back the finished image as base64
+// so callers see the same `{ image }` shape the old Reve endpoint returned.
+async function generateWithKrea(apiKey, prompt, aspectRatio) {
+  const auth = { 'Authorization': `Bearer ${apiKey}` };
+
+  const created = await fetch(`${KREA_BASE}${KREA_MODEL_PATH}`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      aspect_ratio: aspectRatio,
+      resolution: '1K',
+      creativity: 'raw',                                     // don't let Krea rewrite the prompt
+      styles: [{ id: STYLE_ID, strength: STYLE_STRENGTH }],
+    }),
+  });
+
+  const job = await created.json();
+  if (!created.ok || !job.job_id) {
+    throw new Error(job.error || `create failed (${created.status})`);
+  }
+
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  let status = job.status;
+  let result;
+
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+
+    const polled = await fetch(`${KREA_BASE}/jobs/${job.job_id}`, { headers: auth });
+    const state  = await polled.json();
+    status = state.status;
+    result = state.result;
+
+    if (status === 'completed') break;
+    if (status === 'failed' || status === 'cancelled') {
+      throw new Error(result?.error || `job ${status}`);
+    }
+    if (!PENDING.includes(status)) {
+      throw new Error(`unexpected job status: ${status}`);
+    }
+  }
+
+  if (status !== 'completed') throw new Error('timed out waiting for Krea');
+
+  const url = result?.urls?.[0];
+  if (!url) throw new Error('job completed without an image');
+
+  const img = await fetch(url);
+  if (!img.ok) throw new Error(`could not fetch result image (${img.status})`);
+
+  return Buffer.from(await img.arrayBuffer()).toString('base64');
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).end();
     return;
   }
 
-  const { subject, aspect_ratio, version } = req.body;
-  const apiKey       = process.env.REVE_API_KEY;
+  const { subject, aspect_ratio } = req.body;
+  const apiKey       = process.env.KREA_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   if (!subject) { res.status(400).json({ message: 'subject required' }); return; }
@@ -57,26 +124,18 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // 2. Build prompt
-  const prompt = `Pure flat white (#FFFFFF) background, no texture, no grain, no grey, no paper texture. A simple hand-drawn sketch of a ${subject} with ${details}. Drawn quickly with a single thick black marker line. Single continuous outlines only — one line per edge, no double outlines, no second stroke, no interior detail lines, no texture marks, no crosshatching, no interior marks of any kind. The inside of every shape is left completely white and empty, no color. Lines are thick, slightly wobbly, imperfect and whimsical. Simple and reductive — like a loose doodle scrawled in a notebook. Pure black lines on pure white background. No color, no fill, no shading, no gradients, no background color.`;
+  // 2. Build prompt — the LoRA carries the line-art style, so this only has to
+  //    describe the subject.
+  const prompt = `A simple hand-drawn sketch of a ${subject} with ${details}. Thick black marker lines on a plain white background.`;
 
-  // 3. Send to Reve
-  let reve;
+  // 3. Send to Krea
+  let image;
   try {
-    reve = await httpsPost(
-      'api.reve.com', '/v1/image/create',
-      { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
-      { prompt, aspect_ratio: aspect_ratio || '2:3', version: version || 'latest' }
-    );
+    image = await generateWithKrea(apiKey, prompt, aspect_ratio || '2:3');
   } catch (err) {
-    res.status(502).json({ message: `Reve error: ${err.message}` });
+    res.status(502).json({ message: `Krea error: ${err.message}` });
     return;
   }
 
-  if (reve.status !== 200 || !reve.body.image) {
-    res.status(reve.status).json(reve.body);
-    return;
-  }
-
-  res.status(200).json(reve.body);
+  res.status(200).json({ image });
 };

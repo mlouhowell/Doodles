@@ -1,4 +1,14 @@
 {
   "cleanUrls": true,
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/$1" }]
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
+  "functions": {
+    "api/generate.js": {
+      "maxDuration": 60
+    }
+  }
 }
