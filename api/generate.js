@@ -4,7 +4,7 @@ const https = require('https');
 const KREA_BASE       = 'https://api.krea.ai';
 const KREA_MODEL_PATH = '/generate/image/krea/krea-2/medium';
 const STYLE_ID        = 'pgozm164j';
-const STYLE_STRENGTH  = 0.8;
+const STYLE_STRENGTH  = 0.5;
 
 // Krea is a job queue, not a synchronous call — create, then poll until it lands.
 const POLL_INTERVAL_MS = 1500;

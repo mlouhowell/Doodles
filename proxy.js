@@ -14,7 +14,7 @@ const KEYS = JSON.parse(fs.readFileSync(path.join(__dirname, 'keys.json'), 'utf8
 const KREA_BASE       = 'https://api.krea.ai';
 const KREA_MODEL_PATH = '/generate/image/krea/krea-2/medium';
 const STYLE_ID        = 'pgozm164j';
-const STYLE_STRENGTH  = 0.8;
+const STYLE_STRENGTH  = 0.5;
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS  = 55000;
